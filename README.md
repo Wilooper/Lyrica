@@ -44,7 +44,7 @@ The API runs on a Flask server, handling asynchronous requests for YouTube Music
 1. Clone the repository:
 
    ```bash
-   https://github.com/Wilooper/Lyrica.git
+    git clone https://github.com/Wilooper/Lyrica.git
    cd lyrica
    ```
 
