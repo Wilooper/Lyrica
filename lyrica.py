@@ -234,9 +234,9 @@ async def fetch_lyrics(artist_name, song_title, timestamps=False):
 
 @app.route('/')
 def home():
-    return jsonify({
-        "api": "Lyrics Master API",
-        "version": "1.2",
+    return jsonify(
+        "api": "Lyrica",
+        "version": "1.2-o1-beta",
         "status": "active",
         "endpoints": {
             "lyrics": "/lyrics/?artist=ARTIST&song=SONG[&timestamps=true]"
