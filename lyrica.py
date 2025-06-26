@@ -17,7 +17,7 @@ CORS(app, resources={r"/*": {"origins": "*", "allow_headers": ["Content-Type"], 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-GENIUS_TOKEN = os.environ.get("GENIUS_TOKEN", "5weEv6dsQEI-_GKQCuc6ND5dOoPK1w4xxG9Ne46LhEBCaNSVOTtqU3K2BXC4hV4C")
+GENIUS_TOKEN = os.environ.get("GENIUS_TOKEN", " YOUR_GENIUS_API_KEY_HERE")
 
 def log_api_attempt(api_name, artist, song, success, message=None):
     """Log API attempts for debugging"""
