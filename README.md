@@ -332,7 +332,8 @@ fetch('http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho')
     .then(response => response.json())
     .then(data => console.log(data));
 ```
-
+##Note
+The given JSON data is only for reference and you may not get same response on giving same query because these are only for example 
 ## Supported Sources
 
 1. **YouTube Music**: Primary source, supports plain and timed lyrics (thanks to sigma67).
