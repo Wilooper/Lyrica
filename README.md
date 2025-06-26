@@ -86,12 +86,12 @@ To get the most out of Lyrica API, follow these tips:
 
 - **URL Encoding**: Replace spaces with `%20` in URLs (e.g., `song=Tum%20Hi%20Ho`).
 
-- **Timestamps for YouTube Music**: If you want timed lyrics (e.g., for karaoke or synced playback), add `×tamps=true` to the request. Note: Timed lyrics are only available from YouTube Music and not all songs support them.
+- **Timestamps for YouTube Music**: If you want timed lyrics (e.g., for karaoke or synced playback), add `&timestamps=true` to the request. Note: Timed lyrics are only available from YouTube Music and not all songs support them.
 
   - **Example**: To get timed lyrics for "Blue Eyes" by Yo Yo Honey Singh:
 
     ```
-    http://127.0.0.1:9999/lyrics/?artist=Yo%20Yo%20Honey%20Singh&song=Blue%20Eyes×tamps=true
+    http://127.0.0.1:9999/lyrics/?artist=Yo%20Yo%20Honey%20Singh&song=Blue%20Eyes&timestamps=true
     ```
 
   - **Expected Result (if timed lyrics are available)**:
@@ -165,7 +165,7 @@ To get the most out of Lyrica API, follow these tips:
       "version": "1.2",
       "status": "active",
       "endpoints": {
-          "lyrics": "/lyrics/?artist=ARTIST&song=SONG[×tamps=true]"
+          "lyrics": "/lyrics/?artist=ARTIST&song=SONG[&timestamps=true]"
       },
       "supported_sources": ["YouTube Music", "Genius", "Lyrics.ovh", "ChartLyrics", "LyricsFreek"],
       "timestamp": "2025-06-26 14:13:00"
@@ -174,7 +174,7 @@ To get the most out of Lyrica API, follow these tips:
 
 ### 2. Lyrics
 
-- **URL**: `http://127.0.0.1:9999/lyrics/?artist=ARTIST&song=SONG[×tamps=true]`
+- **URL**: `http://127.0.0.1:9999/lyrics/?artist=ARTIST&song=SONG[&timestamps=true]`
 
 - **Method**: GET
 
@@ -190,7 +190,7 @@ To get the most out of Lyrica API, follow these tips:
 
   ```
   http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho
-  http://127.0.0.1:9999/lyrics/?artist=Yo%20Yo%20Honey%20Singh&song=Blue%20Eyes×tamps=true
+  http://127.0.0.1:9999/lyrics/?artist=Yo%20Yo%20Honey%20Singh&song=Blue%20Eyes&timestamps=true
   ```
 
 - **Success Response (YouTube Music)**:
@@ -322,7 +322,7 @@ curl "http://127.0.0.1:9999/lyrics/?artist=Yo%20Yo%20Honey%20Singh&song=Blue%20E
 In a browser:
 
 ```
-http://127.0.0.1:9999/lyrics/?artist=Yo%20Yo%20Honey%20Singh&song=Blue%20Eyes×tamps=true
+http://127.0.0.1:9999/lyrics/?artist=Yo%20Yo%20Honey%20Singh&song=Blue%20Eyes&timestamps=true
 ```
 
 With JavaScript (e.g., in a frontend):
