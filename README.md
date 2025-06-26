@@ -4,6 +4,13 @@
 # Lyrica API - A Made in India Lyrics Finder
 
 ![Made in India](https://img.shields.io/badge/Made%20in-India-blue.svg)![Python](https://img.shields.io/badge/Python-3.6%2B-brightgreen.svg)![License](https://img.shields.io/badge/License-MIT-yellow.svg)**Lyrica** is a powerful, open-source lyrics finder API crafted in India 🇮🇳. It fetches song lyrics from multiple sources, starting with YouTube Music (thanks to sigma67 for the awesome `ytmusicapi`!) and falling back to Genius, Lyrics.ovh, ChartLyrics, and LyricsFreek, ensuring you get the lyrics you love. Built with Flask, Lyrica supports CORS for easy integration into web apps and provides detailed logging for debugging. Whether you're building a music app or just vibing to your favorite tracks, Lyrica has you covered!
+## Important 
+get your genius api token here 
+https://genius.com/api-clients
+it is important to featch lyrics from lyricsgenius api
+Click on ‘New API Client’ in the left sidebar. In the box titled ‘App Website URL’ you can enter the url to any site hosted on GitHub pages or you can use https://es.python.org/ as a placeholder. It doesn’t really matter
+Click save and you should see your API Client on a new page.
+If you click ‘Generate Access Token’ you’ll see your new Access Token and you’ll need to use that in this code to featch lyrics from lyrics genius 
 
 ## Features
 
