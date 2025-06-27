@@ -366,7 +366,7 @@ fetch('http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho')
 ## Special query 
 There are some special queries which you can use after & timestamp query.
 To enable special query use ```&pass=true```after timestamp querry.
-Now you can use ```&sequence=your sequence to use api``
+Now you can use ```&sequence=your sequence to use api```
 this can be use to make your own sequence of using api tools to featch lyrics.If you want Lyrica to skip a api then use ```&pass=true&sequence=1,3,4,5,6```
 in this  example it will not search for no 2 api and directly skip to third one.
 You can use them to make your search faster.
