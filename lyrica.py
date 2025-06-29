@@ -5,7 +5,7 @@ from lyricsgenius import Genius
 import requests
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 import asyncio
 import re
 from bs4 import BeautifulSoup
@@ -78,7 +78,7 @@ async def fetch_lyrics_youtube(artist_name, song_title, timestamps=False):
             "artist": artist_name,
             "title": song_title,
             "lyrics": lyrics,
-            "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         }
         if timed_lyrics:
             result["timed_lyrics"] = timed_lyrics
@@ -103,7 +103,7 @@ def fetch_lyrics_genius(artist_name, song_title):
                 "artist": song.artist,
                 "title": song.title,
                 "lyrics": song.lyrics,
-                "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             }
         log_api_attempt("Genius", artist_name, song_title, False, "No lyrics found")
     except Exception as e:
@@ -126,7 +126,7 @@ def fetch_lyrics_lyricsovh(artist_name, song_title):
                     "artist": artist_name,
                     "title": song_title,
                     "lyrics": data["lyrics"],
-                    "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                 }
         log_api_attempt("Lyrics.ovh", artist_name, song_title, False, "No lyrics or empty response")
     except Exception as e:
@@ -151,7 +151,7 @@ def fetch_lyrics_chartlyrics(artist_name, song_title):
                     "artist": artist_name,
                     "title": song_title,
                     "lyrics": lyric,
-                    "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                 }
         log_api_attempt("ChartLyrics", artist_name, song_title, False, "No lyrics found")
     except Exception as e:
@@ -184,7 +184,7 @@ def fetch_lyrics_lyricsfreek(artist_name, song_title):
                         "artist": artist_name,
                         "title": song_title,
                         "lyrics": lyrics,
-                        "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                     }
         log_api_attempt("LyricsFreek", artist_name, song_title, False, "No lyrics found")
     except Exception as e:
@@ -236,27 +236,26 @@ def fetch_lyrics_lrclib(artist_name, song_title, timestamps=True):
             "duration": data["duration"],
             "instrumental": data.get("instrumental", False),
             "lyrics": lyrics,
-            "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         }
         if timestamps and data["syncedLyrics"]:
             timed_lyrics = []
             lines = data["syncedLyrics"].split("\n")
             for i, line in enumerate(lines):
-                match = re.match(r"\[(\d{2}:\d{2}(?:\.\d{2}|\d{2}))\](.*)", line)
+                # Match timestamps in [MM:SS.mm] or [MM:SS..mm] format
+                match = re.match(r"\[(\d{2}:\d{2}\.?\.?\d{2})\](.*)", line)
                 if match:
                     time_str, text = match.groups()
-                    if len(time_str) > 7:
-                        time_str = f"{time_str[:6]}.{time_str[6:]}"
+                    # Fix malformed [MM:SS..mm] by replacing double dots with single dot
+                    time_str = time_str.replace("..", ".")
                     try:
                         minutes, seconds = map(float, time_str.split(":"))
                         start_time = int((minutes * 60 + seconds) * 1000)
                         end_time = None
                         if i < len(lines) - 1:
-                            next_match = re.match(r"\[(\d{2}:\d{2}(?:\.\d{2}|\d{2}))\](.*)", lines[i + 1])
+                            next_match = re.match(r"\[(\d{2}:\d{2}\.?\.?\d{2})\](.*)", lines[i + 1])
                             if next_match:
-                                next_time_str = next_match.group(1)
-                                if len(next_time_str) > 7:
-                                    next_time_str = f"{next_time_str[:6]}.{next_time_str[6:]}"
+                                next_time_str = next_match.group(1).replace("..", ".")
                                 next_minutes, next_seconds = map(float, next_time_str.split(":"))
                                 end_time = int((next_minutes * 60 + next_seconds) * 1000)
                             else:
@@ -317,7 +316,7 @@ async def fetch_lyrics(artist_name, song_title, timestamps=False, pass_param=Fal
                     "status": "error",
                     "error": {
                         "message": "Invalid sequence: must be unique numbers between 1 and 6",
-                        "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                     }
                 }
             fetcher_list = [(all_fetchers[num][0], all_fetchers[num][1]) for num in sequence]
@@ -333,11 +332,10 @@ async def fetch_lyrics(artist_name, song_title, timestamps=False, pass_param=Fal
                 "status": "error",
                 "error": {
                     "message": "Invalid sequence format: must be comma-separated integers",
-                    "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                 }
             }
     else:
-        # Select the appropriate sequence based on timestamps
         selected_sequence = default_synced_sequence if timestamps else default_plain_sequence
         fetcher_list = [(all_fetchers[num][0], all_fetchers[num][1]) for num in selected_sequence]
 
@@ -409,7 +407,7 @@ async def fetch_lyrics(artist_name, song_title, timestamps=False, pass_param=Fal
             "message": f"No lyrics found for '{song_title}' by '{artist_name}'",
             "attempts": attempts
         },
-        "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     }
 
 @app.route('/')
@@ -429,7 +427,7 @@ def home():
             "5": "ChartLyrics",
             "6": "LyricsFreek"
         },
-        "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     })
 
 @app.route('/lyrics/', methods=['GET'])
@@ -448,7 +446,7 @@ async def get_lyrics():
             "status": "error",
             "error": {
                 "message": "Artist and song name are required",
-                "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             }
         }), 400
 
@@ -457,7 +455,7 @@ async def get_lyrics():
             "status": "error",
             "error": {
                 "message": "Sequence parameter is required when pass=true",
-                "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
             }
         }), 400
 
