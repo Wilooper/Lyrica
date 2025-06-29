@@ -5,7 +5,8 @@ from lyricsgenius import Genius
 import requests
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import datetime
+from datetime import timezone
 import asyncio
 import re
 from bs4 import BeautifulSoup
@@ -53,19 +54,19 @@ async def fetch_lyrics_youtube(artist_name, song_title, timestamps=False):
             log_api_attempt("YouTube Music", artist_name, song_title, False, "No lyrics browseId")
             return None
 
-        lyrics_data = ytmusic.get_lyrics(browseId=lyrics_browse_id, timestamps=timestamps)
-        if not lyrics_data:
+        lyrics_data = ytmusic.get_lyrics(browseId=lyrics_browse_id)
+        if not lyrics_data or not lyrics_data.get('lyrics'):
             log_api_attempt("YouTube Music", artist_name, song_title, False, "No lyrics data")
             return None
 
         if lyrics_data.get('hasTimestamps'):
-            lyrics = "\n".join(line['text'] for line in lyrics_data['lyrics'])
+            lyrics = "\n".join(line.text for line in lyrics_data['lyrics'])
             timed_lyrics = [
                 {
-                    "text": line['text'],
-                    "start_time": line['start_time'],
-                    "end_time": line['end_time'],
-                    "id": line['id']
+                    "text": line.text,
+                    "start_time": line.start_time,
+                    "end_time": line.end_time,
+                    "id": line.line_id
                 } for line in lyrics_data['lyrics']
             ]
         else:
@@ -305,8 +306,7 @@ async def fetch_lyrics(artist_name, song_title, timestamps=False, pass_param=Fal
     }
 
     default_synced_sequence = [2, 3]
-    default_plain_sequence = [1, 4, 5, 6, 2, 3]
-    final_fallback_sequence = [2, 3]
+    default_plain_sequence = [1, 4, 5, 6]
 
     if pass_param and sequence:
         try:
@@ -320,13 +320,6 @@ async def fetch_lyrics(artist_name, song_title, timestamps=False, pass_param=Fal
                     }
                 }
             fetcher_list = [(all_fetchers[num][0], all_fetchers[num][1]) for num in sequence]
-            if len(sequence) < 6:
-                if timestamps:
-                    remaining = [x for x in default_synced_sequence if x not in sequence]
-                    fetcher_list += [(all_fetchers[num][0], all_fetchers[num][1]) for num in remaining]
-                else:
-                    remaining = [x for x in default_plain_sequence if x not in sequence]
-                    fetcher_list += [(all_fetchers[num][0], all_fetchers[num][1]) for num in remaining]
         except ValueError:
             return {
                 "status": "error",
@@ -336,67 +329,18 @@ async def fetch_lyrics(artist_name, song_title, timestamps=False, pass_param=Fal
                 }
             }
     else:
-        selected_sequence = default_synced_sequence if timestamps else default_plain_sequence
-        fetcher_list = [(all_fetchers[num][0], all_fetchers[num][1]) for num in selected_sequence]
-
-    if timestamps:
-        for api_name, fetcher in fetcher_list:
-            try:
-                result = await maybe_await(fetcher, artist_name, song_title, timestamps=api_name in ["YouTube Music", "LRCLIB"])
-                if result and result.get("hasTimestamps"):
-                    return {
-                        "status": "success",
-                        "data": result,
-                        "attempts": attempts
-                    }
-                attempts.append({"api": api_name, "status": "no_results" if result else "no_synced_lyrics"})
-            except Exception as e:
-                logger.error(f"{api_name} error: {str(e)}")
-                attempts.append({"api": api_name, "status": "error", "message": str(e)})
-
-        plain_fetcher_list = [(all_fetchers[num][0], all_fetchers[num][1]) for num in default_plain_sequence[:4]]
-        for api_name, fetcher in plain_fetcher_list:
-            try:
-                result = await maybe_await(fetcher, artist_name, song_title, timestamps=False)
-                if result:
-                    return {
-                        "status": "success",
-                        "data": result,
-                        "attempts": attempts
-                    }
-                attempts.append({"api": api_name, "status": "no_results"})
-            except Exception as e:
-                logger.error(f"{api_name} error: {str(e)}")
-                attempts.append({"api": api_name, "status": "error", "message": str(e)})
+        fetcher_list = [(all_fetchers[num][0], all_fetchers[num][1]) for num in (default_synced_sequence if timestamps else default_plain_sequence)]
 
     for api_name, fetcher in fetcher_list:
         try:
-            result = await maybe_await(fetcher, artist_name, song_title, timestamps=False)
-            if result:
+            result = await maybe_await(fetcher, artist_name, song_title, timestamps=api_name in ["YouTube Music", "LRCLIB"])
+            if result and (not timestamps or result.get("hasTimestamps")):
                 return {
                     "status": "success",
                     "data": result,
                     "attempts": attempts
                 }
-            attempts.append({"api": api_name, "status": "no_results"})
-        except Exception as e:
-            logger.error(f"{api_name} error: {str(e)}")
-            attempts.append({"api": api_name, "status": "error", "message": str(e)})
-
-    final_fallback_fetchers = [
-        ("LRCLIB", lambda a, s, timestamps=False: fetch_lyrics_lrclib(a, s, timestamps)),
-        ("YouTube Music", lambda a, s, timestamps=False: fetch_lyrics_youtube(a, s, timestamps))
-    ]
-    for api_name, fetcher in final_fallback_fetchers:
-        try:
-            result = await maybe_await(fetcher, artist_name, song_title, timestamps=False)
-            if result:
-                return {
-                    "status": "success",
-                    "data": result,
-                    "attempts": attempts
-                }
-            attempts.append({"api": api_name, "status": "no_results"})
+            attempts.append({"api": api_name, "status": "no_results" if result else "no_synced_lyrics"})
         except Exception as e:
             logger.error(f"{api_name} error: {str(e)}")
             attempts.append({"api": api_name, "status": "error", "message": str(e)})
@@ -405,9 +349,8 @@ async def fetch_lyrics(artist_name, song_title, timestamps=False, pass_param=Fal
         "status": "error",
         "error": {
             "message": f"No lyrics found for '{song_title}' by '{artist_name}'",
-            "attempts": attempts
-        },
-        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        }
     }
 
 @app.route('/')
@@ -469,4 +412,3 @@ def favicon():
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=9999)
-
