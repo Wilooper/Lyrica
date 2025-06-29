@@ -58,7 +58,6 @@ async def fetch_lyrics_youtube(artist_name, song_title, timestamps=False):
             log_api_attempt("YouTube Music", artist_name, song_title, False, "No lyrics data")
             return None
 
-        # Standardize output to match other APIs
         if lyrics_data.get('hasTimestamps'):
             lyrics = "\n".join(line['text'] for line in lyrics_data['lyrics'])
             timed_lyrics = [
@@ -211,9 +210,7 @@ def fetch_lyrics_lrclib(artist_name, song_title, timestamps=True):
             log_api_attempt("LRCLIB", artist_name, song_title, False, "Track not found")
             return None
 
-        # Get the first result's info
         track = results[0]
-        # Query the /api/get endpoint with full signature
         get_params = {
             "track_name": track["trackName"],
             "artist_name": track["artistName"],
@@ -242,23 +239,45 @@ def fetch_lyrics_lrclib(artist_name, song_title, timestamps=True):
             "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         }
         if timestamps and data["syncedLyrics"]:
-            # Parse synced lyrics into timed_lyrics format
             timed_lyrics = []
-            for line in data["syncedLyrics"].split("\n"):
-                match = re.match(r"\[(\d{2}:\d{2}\.\d{2})\](.*)", line)
+            lines = data["syncedLyrics"].split("\n")
+            for i, line in enumerate(lines):
+                match = re.match(r"\[(\d{2}:\d{2}(?:\.\d{2}|\d{2}))\](.*)", line)
                 if match:
                     time_str, text = match.groups()
-                    # Convert MM:SS.mm to milliseconds
-                    minutes, seconds = map(float, time_str.split(":"))
-                    start_time = int((minutes * 60 + seconds) * 1000)
-                    timed_lyrics.append({
-                        "text": text.strip(),
-                        "start_time": start_time,
-                        "end_time": None,  # LRCLIB doesn't provide end times
-                        "id": f"lrc_{len(timed_lyrics)}"
-                    })
-            result["timed_lyrics"] = timed_lyrics
-            result["hasTimestamps"] = True
+                    if len(time_str) > 7:
+                        time_str = f"{time_str[:6]}.{time_str[6:]}"
+                    try:
+                        minutes, seconds = map(float, time_str.split(":"))
+                        start_time = int((minutes * 60 + seconds) * 1000)
+                        end_time = None
+                        if i < len(lines) - 1:
+                            next_match = re.match(r"\[(\d{2}:\d{2}(?:\.\d{2}|\d{2}))\](.*)", lines[i + 1])
+                            if next_match:
+                                next_time_str = next_match.group(1)
+                                if len(next_time_str) > 7:
+                                    next_time_str = f"{next_time_str[:6]}.{next_time_str[6:]}"
+                                next_minutes, next_seconds = map(float, next_time_str.split(":"))
+                                end_time = int((next_minutes * 60 + next_seconds) * 1000)
+                            else:
+                                end_time = start_time + 4000
+                        else:
+                            end_time = start_time + 4000 if not data.get("duration") else int(data["duration"] * 1000)
+                        if text.strip():
+                            timed_lyrics.append({
+                                "text": text.strip(),
+                                "start_time": start_time,
+                                "end_time": end_time,
+                                "id": f"lrc_{i}"
+                            })
+                    except ValueError as ve:
+                        logger.warning(f"Skipping malformed timestamp in line {i}: {line} ({str(ve)})")
+                        continue
+                else:
+                    logger.warning(f"Skipping line without valid timestamp: {line}")
+            if timed_lyrics:
+                result["timed_lyrics"] = timed_lyrics
+                result["hasTimestamps"] = True
 
         log_api_attempt("LRCLIB", artist_name, song_title, True)
         return result
@@ -277,7 +296,6 @@ async def maybe_await(func, *args, **kwargs):
 async def fetch_lyrics(artist_name, song_title, timestamps=False, pass_param=False, sequence=None):
     attempts = []
     
-    # Define all available fetchers with their corresponding numbers
     all_fetchers = {
         1: ("Genius", lambda a, s, timestamps=timestamps: fetch_lyrics_genius(a, s)),
         2: ("LRCLIB", lambda a, s, timestamps=timestamps: fetch_lyrics_lrclib(a, s, timestamps)),
@@ -287,14 +305,12 @@ async def fetch_lyrics(artist_name, song_title, timestamps=False, pass_param=Fal
         6: ("LyricsFreek", lambda a, s, timestamps=timestamps: fetch_lyrics_lyricsfreek(a, s))
     }
 
-    # Default sequences
-    default_synced_sequence = [2, 3]  # LRCLIB, YouTube Music
-    default_plain_sequence = [1, 4, 5, 6, 2, 3]  # Genius, Lyrics.ovh, ChartLyrics, LyricsFreek, LRCLIB, YouTube Music
-    final_fallback_sequence = [2, 3]  # LRCLIB, YouTube Music for plain lyrics
+    default_synced_sequence = [2, 3]
+    default_plain_sequence = [1, 4, 5, 6, 2, 3]
+    final_fallback_sequence = [2, 3]
 
     if pass_param and sequence:
         try:
-            # Parse sequence and validate
             sequence = [int(x) for x in sequence.split(",")]
             if not all(1 <= x <= 6 for x in sequence) or len(sequence) > 6 or len(sequence) != len(set(sequence)):
                 return {
@@ -305,7 +321,6 @@ async def fetch_lyrics(artist_name, song_title, timestamps=False, pass_param=Fal
                     }
                 }
             fetcher_list = [(all_fetchers[num][0], all_fetchers[num][1]) for num in sequence]
-            # If sequence length is less than 6, append remaining fetchers in default order
             if len(sequence) < 6:
                 if timestamps:
                     remaining = [x for x in default_synced_sequence if x not in sequence]
@@ -322,17 +337,14 @@ async def fetch_lyrics(artist_name, song_title, timestamps=False, pass_param=Fal
                 }
             }
     else:
-        # Default behavior when pass=false
-        if timestamps:
-            fetcher_list = [(all_fetchers[num][0], all_fetchers[num][1]) for num in default_synced_sequence]
-        else:
-            fetcher_list = [(all_fetchers[num][0], all_fetchers[num][1]) for num in default_plain_sequence]
+        # Select the appropriate sequence based on timestamps
+        selected_sequence = default_synced_sequence if timestamps else default_plain_sequence
+        fetcher_list = [(all_fetchers[num][0], all_fetchers[num][1]) for num in selected_sequence]
 
     if timestamps:
-        # Step 1: Try specified or default sequence for synced lyrics
         for api_name, fetcher in fetcher_list:
             try:
-                result = await maybe_await(fetcher, artist_name, song_title, timestamps=True if api_name in ["YouTube Music", "LRCLIB"] else False)
+                result = await maybe_await(fetcher, artist_name, song_title, timestamps=api_name in ["YouTube Music", "LRCLIB"])
                 if result and result.get("hasTimestamps"):
                     return {
                         "status": "success",
@@ -344,8 +356,7 @@ async def fetch_lyrics(artist_name, song_title, timestamps=False, pass_param=Fal
                 logger.error(f"{api_name} error: {str(e)}")
                 attempts.append({"api": api_name, "status": "error", "message": str(e)})
 
-        # Step 2: Fall back to plain lyrics in default order if no synced lyrics found
-        plain_fetcher_list = [(all_fetchers[num][0], all_fetchers[num][1]) for num in default_plain_sequence[:4]]  # Exclude LRCLIB, YouTube Music
+        plain_fetcher_list = [(all_fetchers[num][0], all_fetchers[num][1]) for num in default_plain_sequence[:4]]
         for api_name, fetcher in plain_fetcher_list:
             try:
                 result = await maybe_await(fetcher, artist_name, song_title, timestamps=False)
@@ -360,7 +371,6 @@ async def fetch_lyrics(artist_name, song_title, timestamps=False, pass_param=Fal
                 logger.error(f"{api_name} error: {str(e)}")
                 attempts.append({"api": api_name, "status": "error", "message": str(e)})
 
-    # Step 3: If timestamps=False or no synced lyrics found, try plain lyrics
     for api_name, fetcher in fetcher_list:
         try:
             result = await maybe_await(fetcher, artist_name, song_title, timestamps=False)
@@ -375,7 +385,6 @@ async def fetch_lyrics(artist_name, song_title, timestamps=False, pass_param=Fal
             logger.error(f"{api_name} error: {str(e)}")
             attempts.append({"api": api_name, "status": "error", "message": str(e)})
 
-    # Step 4: Final fallback to LRCLIB and YouTube Music for plain lyrics
     final_fallback_fetchers = [
         ("LRCLIB", lambda a, s, timestamps=False: fetch_lyrics_lrclib(a, s, timestamps)),
         ("YouTube Music", lambda a, s, timestamps=False: fetch_lyrics_youtube(a, s, timestamps))
@@ -394,7 +403,6 @@ async def fetch_lyrics(artist_name, song_title, timestamps=False, pass_param=Fal
             logger.error(f"{api_name} error: {str(e)}")
             attempts.append({"api": api_name, "status": "error", "message": str(e)})
 
-    # If all attempts fail
     return {
         "status": "error",
         "error": {
@@ -411,7 +419,7 @@ def home():
         "version": "1.2-o1-final",
         "status": "active",
         "endpoints": {
-            "lyrics": "/lyrics/?artist=ARTIST&song=SONG&timestamp=true&pass=false&sequence=1,2,3,4,5,6"
+            "lyrics": "/lyrics/?artist=ARTIST&song=SONG×tamps=true&pass=false&sequence=1,2,3,4,5,6"
         },
         "supported_sources": {
             "1": "Genius",
@@ -428,8 +436,6 @@ def home():
 async def get_lyrics():
     artist = request.args.get('artist', '').strip()
     song = request.args.get('song', '').strip()
-
-    # Accept both 'timestamp' and 'timestamps' as true if either is set to 'true'
     timestamps = (
         request.args.get('timestamps', 'false').lower() == 'true'
         or request.args.get('timestamp', 'false').lower() == 'true'
@@ -465,3 +471,4 @@ def favicon():
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=9999)
+
