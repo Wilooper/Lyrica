@@ -15,6 +15,10 @@ const karaokeToggle = document.getElementById('karaoke-toggle');
 const progressFill = document.querySelector('.progress-fill');
 const errorMessage = document.getElementById('error-message');
 
+// Download lyrics elements
+const downloadBtn = document.getElementById('download-btn');
+const downloadFormat = document.getElementById('download-format');
+
 // Karaoke state
 let karaokeMode = false;
 let currentLyrics = null;
@@ -27,6 +31,54 @@ const API_BASE_URL = 'http://127.0.0.1:9999';
 // Event Listeners
 form.addEventListener('submit', handleSearch);
 karaokeToggle.addEventListener('click', toggleKaraoke);
+
+// Download Lyrics Feature
+if (downloadBtn && downloadFormat) {
+    downloadBtn.addEventListener('click', function () {
+        if (!currentLyrics) return;
+
+        let content = '';
+        let filename = '';
+        let format = downloadFormat.value;
+        const { artist = 'Unknown Artist', title = 'Unknown Title', lyrics = '', timed_lyrics = [], hasTimestamps = false } = currentLyrics;
+
+        if (format === 'lrc' && timed_lyrics.length > 0 && hasTimestamps) {
+            // Generate LRC content
+            content += `[ar:${artist}]
+`;
+            content += `[ti:${title}]
+`;
+            content += `[by:Lyrica]
+`;
+            timed_lyrics.forEach(line => {
+                // line.start_time is ms
+                const ms = parseInt(line.start_time, 10) || 0;
+                const min = String(Math.floor(ms / 60000)).padStart(2, '0');
+                const sec = ((ms % 60000) / 1000).toFixed(2).padStart(5, '0');
+                content += `[${min}:${sec}]${line.text}\n`;
+            });
+            filename = `${artist} - ${title}.lrc`;
+        } else {
+            // Plain lyrics
+            content = lyrics || '';
+            filename = `${artist} - ${title}.txt`;
+        }
+
+        // Create and trigger download
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 0);
+    });
+}
 
 // Smooth scrolling for navigation links
 document.querySelectorAll('.nav-link').forEach(link => {
