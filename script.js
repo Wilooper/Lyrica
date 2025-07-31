@@ -300,3 +300,29 @@ songInput.addEventListener('input', function() {
 window.addEventListener('load', function() {
     artistInput.focus();
 });
+// Download lyrics handlers
+document.getElementById('download-plain').addEventListener('click', () => {
+    if (!currentLyrics) return;
+    const blob = new Blob([currentLyrics.lyrics], { type: 'text/plain' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${currentLyrics.artist} - ${currentLyrics.title}.txt`;
+    link.click();
+});
+
+document.getElementById('download-timed').addEventListener('click', () => {
+    if (!currentLyrics || !currentLyrics.timed_lyrics) return;
+    const lrcLines = currentLyrics.timed_lyrics.map(line => {
+        const minutes = Math.floor(line.start_time / 60000);
+        const seconds = Math.floor((line.start_time % 60000) / 1000);
+        const ms = Math.floor((line.start_time % 1000) / 10);
+        const timestamp = `[${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(ms).padStart(2, '0')}]`;
+        return `${timestamp}${line.text}`;
+    }).join('\n');
+    
+    const blob = new Blob([lrcLines], { type: 'text/plain' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${currentLyrics.artist} - ${currentLyrics.title}.lrc`;
+    link.click();
+});
