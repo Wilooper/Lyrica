@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lyrica - Your Ultimate Lyrics Finder</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <i class="fas fa-music"></i>
+                <h1>Lyrica</h1>
+                <span class="made-in-india">🇮🇳 Made in India</span>
+            </div>
+            <nav class="nav">
+                <a href="#features" class="nav-link">Features</a>
+                <a href="#api" class="nav-link">API</a>
+                <a href="#about" class="nav-link">About</a>
+            </nav>
+        </header>
+
+        <!-- Hero Section -->
+        <section class="hero">
+            <div class="hero-content">
+                <h2 class="hero-title">Find Lyrics for Any Song</h2>
+                <p class="hero-subtitle">Powered by multiple sources including YouTube Music, Genius, and more. Get synchronized lyrics for karaoke!</p>
+                
+                <!-- Search Form -->
+                <div class="search-container">
+                    <form id="lyrics-form" class="search-form">
+                        <div class="form-group">
+                            <input type="text" id="artist" placeholder="Artist name (e.g., Arijit Singh)" required>
+                            <i class="fas fa-user-music"></i>
+                        </div>
+                        <div class="form-group">
+                            <input type="text" id="song" placeholder="Song title (e.g., Tum Hi Ho)" required>
+                            <i class="fas fa-music"></i>
+                        </div>
+                        <div class="form-options">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="timestamps">
+                                <span class="checkmark"></span>
+                                Get timestamped lyrics (karaoke mode)
+                            </label>
+                        </div>
+                        <button type="submit" class="search-btn">
+                            <i class="fas fa-search"></i>
+                            Find Lyrics
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </section>
+
+        <!-- Results Section -->
+        <section id="results" class="results hidden">
+            <div class="results-header">
+                <h3 id="results-title"></h3>
+                <div class="results-meta">
+                    <span id="source-badge" class="source-badge"></span>
+                    <span id="timestamp" class="timestamp"></span>
+                </div>
+            </div>
+            
+            <!-- Karaoke Mode Toggle -->
+            <div id="karaoke-controls" class="karaoke-controls hidden">
+                <button id="karaoke-toggle" class="karaoke-btn">
+                    <i class="fas fa-play"></i>
+                    Start Karaoke Mode
+                </button>
+                <div class="progress-bar">
+                    <div class="progress-fill"></div>
+                </div>
+            </div>
+
+            
+<div class="download-controls">
+                <button id="download-lyrics" class="download-btn">
+                    <i class="fas fa-download"></i>
+                    Download Lyrics
+                </button>
+            </div>
+
+            <div class="lyrics-container">
+                <div id="lyrics-content" class="lyrics-content"></div>
+            </div>
+        </section>
+
+        <!-- Loading State -->
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+            <p>Searching for lyrics...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="error" class="error hidden">
+            <i class="fas fa-exclamation-triangle"></i>
+            <p id="error-message"></p>
+        </div>
+
+        <!-- Features Section -->
+        <section id="features" class="features">
+            <h2>Features</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <i class="fas fa-globe"></i>
+                    <h3>Multi-Source</h3>
+                    <p>Searches across YouTube Music, Genius, LrcLib, and more to find the best lyrics</p>
+                </div>
+                <div class="feature-card">
+                    <i class="fas fa-clock"></i>
+                    <h3>Timestamped Lyrics</h3>
+                    <p>Get synchronized lyrics with precise timing for karaoke and sing-along features</p>
+                </div>
+                <div class="feature-card">
+                    <i class="fas fa-mobile-alt"></i>
+                    <h3>Responsive Design</h3>
+                    <p>Beautiful interface that works perfectly on desktop, tablet, and mobile devices</p>
+                </div>
+                <div class="feature-card">
+                    <i class="fas fa-flag"></i>
+                    <h3>Made in India</h3>
+                    <p>Proudly developed in India with focus on reliability and user experience</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- API Section -->
+        <section id="api" class="api-section">
+            <h2>API Documentation</h2>
+            <div class="api-card">
+                <h3>Get Lyrics</h3>
+                <div class="api-endpoint">
+                    <code>GET /lyrics/?artist=ARTIST&song=SONG&timestamps=true</code>
+                </div>
+                <div class="api-params">
+                    <h4>Parameters:</h4>
+                    <ul>
+                        <li><strong>artist</strong> (required): Artist name</li>
+                        <li><strong>song</strong> (required): Song title</li>
+                        <li><strong>timestamps</strong> (optional): Set to 'true' for timestamped lyrics</li>
+                    </ul>
+                </div>
+                <div class="api-example">
+                    <h4>Example:</h4>
+                    <code>http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&timestamps=true</code>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>Lyrica API</h4>
+                    <p>Your ultimate lyrics finder, made in India 🇮🇳</p>
+                </div>
+                <div class="footer-section">
+                    <h4>Supported Sources</h4>
+                    <ul>
+                        <li>YouTube Music</li>
+                        <li>LrcLib</li>
+                        <li>Genius</li>
+                        <li>Lyrics.ovh</li>
+                        <li>ChartLyrics</li>
+                        <li>LyricsFreek</li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Special Thanks</h4>
+                    <p>Thanks to sigma67 for ytmusicapi and tranxuanthang for LrcLib API</p>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2024 Lyrica API. MIT License.</p>
+            </div>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+    </html>
