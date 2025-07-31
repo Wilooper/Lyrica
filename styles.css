@@ -530,6 +530,10 @@ body {
     .features-grid {
         grid-template-columns: 1fr;
     }
+    .download-buttons button {
+    margin-right: 10px;
+    margin-top: 10px;
+    }
 }
 
 @media (max-width: 480px) {
