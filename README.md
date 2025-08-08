@@ -181,6 +181,8 @@ To get the most out of Lyrica API, follow these tips:
 ### 1. Home
 
 - **URL**: `http://127.0.0.1:9999/`
+**TO USE GUI**: `http://127.0.0.1:9999/app`
+  
 
 - **Method**: GET
 
