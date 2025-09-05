@@ -4,3 +4,4 @@ ytmusicapi==1.7.0
 lyricsgenius==3.0.1
 requests==2.31.0
 beautifulsoup4==4.12.2
+flask-caching==2.1.0
