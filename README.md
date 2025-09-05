@@ -7,6 +7,7 @@
 - Now with gui to directly test api functionalities.
 - To Use GUI GO TO :
   **`http://127.0.0.1:9999/app`**
+- Added caching for fast response 
 ## Important 
 Get your Genius API token here:  
 https://genius.com/api-clients
