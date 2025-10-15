@@ -439,6 +439,7 @@ Contributions are welcome! 🎉
 
 - **sigma67**: For creating the `ytmusicapi`, which powers Lyrica’s YouTube Music integration.
 - **tranxuanthang** and the **LrcLib team**: For the amazing [LrcLib API](https://lrclib.net), enabling synchronized LRC/timed lyrics support in Lyrica.
+- **maxrave-dev**:For amazing Simp music lyrics library 
 
 ## License
 
