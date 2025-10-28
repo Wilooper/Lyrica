@@ -411,7 +411,7 @@ def home():
         "supported_sources": {
             "1": "Genius",
             "2": "LRCLIB",
-            "3": "SimpMusic,
+            "3": "SimpMusic",
             "4": "YouTube Music",
             "5": "Lyrics.ovh",
             "6": "ChartLyrics",
