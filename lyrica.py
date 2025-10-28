@@ -403,7 +403,7 @@ async def fetch_lyrics(artist_name, song_title, timestamps=False, pass_param=Fal
 def home():
     return jsonify({
         "api": "Lyrica",
-        "version": "1.2-o1-final",
+        "version": "1.2-gem",
         "status": "active",
         "endpoints": {
             "lyrics": "/lyrics/?artist=ARTIST&song=SONG×tamps=true&pass=false&sequence=1,2,3,4,5,6"
@@ -411,10 +411,11 @@ def home():
         "supported_sources": {
             "1": "Genius",
             "2": "LRCLIB",
-            "3": "YouTube Music",
-            "4": "Lyrics.ovh",
-            "5": "ChartLyrics",
-            "6":"Simp_music lyrics library"
+            "3": "SimpMusic,
+            "4": "YouTube Music",
+            "5": "Lyrics.ovh",
+            "6": "ChartLyrics",
+            
         },
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     })
