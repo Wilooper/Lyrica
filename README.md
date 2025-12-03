@@ -4,7 +4,7 @@
 
 **Lyrica** is a powerful, open-source lyrics finder API crafted in India 🇮🇳. It fetches song lyrics from multiple sources, starting with YouTube Music (thanks to sigma67 for the awesome `ytmusicapi`!) and falling back to Genius, Lyrics.ovh, ChartLyrics, LyricsFreek, and now **LrcLib** for even broader coverage and support for LRC timestamped lyrics. Built with Flask, Lyrica supports CORS for easy integration into web apps and provides detailed logging for debugging. Whether you're building a music app or just vibing to your favorite tracks, Lyrica has you covered! 
 # Check api in action
-- term32.vercal.app
+- https://term32.vercal.app
 ## WHAT'S NEW ?
 - Now with gui to directly test api functionalities.
 - To Use GUI GO TO :
