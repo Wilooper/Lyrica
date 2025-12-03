@@ -7,7 +7,7 @@
 - https://term32.vercal.app
 ## NOTE-
 - If you dont want it to run locally you can use
-- https://term32.onrender.com
+- https://term30.onrender.com
 - to acces api all the endpoint (except /app that is use for default ui ) work as like in local run
 ## WHAT'S NEW ?
 - Now with gui to directly test api functionalities.
