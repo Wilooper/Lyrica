@@ -7,7 +7,7 @@
 - https://term32.vercel.app/
 ## NOTE-
 - If you dont want it to run locally you can use
-- https://term30.onrender.com
+- https://test-0k.onrender.com
 - to acces api all the endpoint (except /app that is use for default ui ) work as like in local run
 ## WHAT'S NEW ?
 - Now with gui to directly test api functionalities.
