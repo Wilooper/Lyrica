@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# dotenv
+.env
+*.env
+
+# cache
+cache/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
