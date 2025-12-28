@@ -11,8 +11,9 @@
 
 - **I have made a lyrics translation and transliteration engine if you are inatrested then you can check it out on:-
 -https://automatic-engine-nc2j.onrender.com**
--It might be slow now because it uses ai to translate and transliterate we will soon implement the database to make it fast asap
-ALSO if you like the project then star it
+
+- It might be slow now because it uses ai to translate and transliterate we will soon implement the database to make it fast.
+- if you like the project then star it to motivate me
 **THANKS!**
 ### Key Features
 - **Multi-Source Lyrics Retrieval**: Aggregates from 7 sources with prioritized sequencing.
