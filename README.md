@@ -6,6 +6,12 @@
 
 **Lyrica** is an open-source RESTful API for retrieving song lyrics from multiple sources, developed with a focus on accessibility and reliability in India 🇮🇳. It prioritizes high-quality sources like YouTube Music for timestamped lyrics and falls back to LrcLib, Genius, Lyrics.ovh, ChartLyrics, LyricsFreak, and Simp Music for comprehensive coverage. The API is built on Flask, supports asynchronous operations, includes caching for performance, rate limiting for stability, CORS for web integration, and detailed logging for debugging.
 
+###IMPORTANAT NOTE to users
+-**I have made a lyrics translation and transliteration engine if you are inatrested then you can check it out on:-
+-https://automatic-engine-nc2j.onrender.com
+-It might be slow now because it uses ai to translate and transliterate we will soon implement the database to make it fast asap
+ALSO if you like the project then star it
+THANKS!
 ### Key Features
 - **Multi-Source Lyrics Retrieval**: Aggregates from 7 sources with prioritized sequencing.
 - **Timestamped Lyrics**: Supports synchronized (LRC-style) lyrics from YouTube Music and LrcLib.
