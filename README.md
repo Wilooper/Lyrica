@@ -9,7 +9,7 @@
 # IMPORTANAT NOTE to users:-
 
 
-- **I have made a lyrics translation and transliteration engine if you are inatrested then you can check it out on:-
+- **I have made a lyrics translation and transliteration engine if you are instrested then you can check it out on:-
 -https://automatic-engine-nc2j.onrender.com**
 
 - It might be slow now because it uses ai to translate and transliterate we will soon implement the database to make it fast.
