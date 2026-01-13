@@ -112,13 +112,14 @@ All endpoints return JSON responses. Use URL-encoding for parameters (e.g., spac
   | `sequence`  | string  | No       | Comma-separated source IDs (e.g., "1,3,5"); requires `pass=true`.           | -       |
 
   **Source Sequence**:
-  - 1: YouTube Music
-  - 2: LrcLib
-  - 3: Genius
-  - 4: Lyrics.ovh
-  - 5: ChartLyrics
-  - 6: LyricsFreak
-  - 7: Simp Music
+| ID | Source Name   | Type   | Notes                                    |
+| -- | ------------- | ------ | ---------------------------------------- |
+| 1  | Genius        | Plain  | Tried first by default                   |
+| 2  | LRCLIB        | Synced | Preferred for synced lyrics              |
+| 3  | SimpMusic     | Synced | Fallback synced source                   |
+| 4  | YouTube Music | Plain  | Requires authentication for best results |
+| 5  | Lyrics.ovh    | Plain  | Simple fallback                          |
+| 6  | ChartLyrics   | Plain  | Final fallback                           |
 
 - **Example Requests**:
   - Basic (plain lyrics):
