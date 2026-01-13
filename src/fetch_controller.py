@@ -2,13 +2,6 @@ from datetime import datetime, timezone
 from src.logger import get_logger
 from src.utils import maybe_await
 from src.sources import ALL_FETCHERS
-from src.sources.ytmusic_fetcher import (
-    search_songs,
-    get_trending,
-    get_stream,
-    get_suggestions
-)
-
 import time
 import logging
 from requests.exceptions import ConnectionError, RequestException
@@ -71,77 +64,3 @@ async def fetch_lyrics_controller(artist_name: str, song_title: str, timestamps:
     
     return {"status":"error","error":{"message":f"No lyrics found for '{song_title}' by '{artist_name}'","timestamp":datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")}}
 
-def fetch_music_search(query):
-    """Retry wrapper for flaky YouTube Music API connections on Termux"""
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            return search_songs(query)
-        except (ConnectionError, RequestException, ProtocolError) as e:
-            logger.warning(f"YouTube search attempt {attempt+1}/{max_retries} failed for '{query[:50]}...': {str(e)[:100]}")
-            if attempt == max_retries - 1:
-                logger.error(f"All {max_retries} search attempts failed for '{query}'")
-                return []  # Graceful empty response for frontend
-            time.sleep(2 ** attempt + 0.1)  # Exponential backoff: 1.1s, 2.2s, 4.4s
-        except Exception as e:
-            logger.error(f"Unexpected error in search attempt {attempt+1}: {str(e)}")
-            return []  # Fail fast on unexpected errors
-    return []
-
-def fetch_trending_music(country):
-    """Trending has better reliability, minimal retry"""
-    try:
-        return get_trending(country)
-    except Exception as e:
-        logger.warning(f"Trending fetch failed: {str(e)}")
-        return []
-
-def fetch_stream(video_id):
-    """Stream fetch with single retry for transient errors"""
-    try:
-        return get_stream(video_id)
-    except (ConnectionError, RequestException) as e:
-        logger.warning(f"Stream fetch retry for {video_id}: {str(e)}")
-        time.sleep(1)
-        try:
-            return get_stream(video_id)
-        except:
-            return None
-    except Exception:
-        return None
-
-def fetch_suggestions(video_id):
-    """Song queue suggestions"""
-    return get_suggestions(video_id)
-
-
-def fetch_search_suggestions(query, limit=8):
-    """REAL YTMusic get_search_suggestions - Tu → Tum hi ho, Tum sa, etc."""
-    if len(query) < 2:
-        return []
-    
-    try:
-        # TRUE YTMusic autocomplete method
-        from src.sources.ytmusic_fetcher import ytmusic
-        raw_suggestions = ytmusic.get_search_suggestions(query)
-        
-        # Clean & dedupe
-        suggestions = []
-        seen = set()
-        for suggestion in raw_suggestions[:limit]:
-            if isinstance(suggestion, str):
-                clean = suggestion.strip()
-                if clean and clean not in seen:
-                    suggestions.append(clean)
-                    seen.add(clean)
-            elif isinstance(suggestion, dict):
-                # Handle detailed format
-                clean = suggestion.get('text', '').strip()
-                if clean and clean not in seen:
-                    suggestions.append(clean)
-                    seen.add(clean)
-        
-        return suggestions[:8]
-    except Exception as e:
-        logger.warning(f"YTMusic autocomplete error: {e}")
-        return []
