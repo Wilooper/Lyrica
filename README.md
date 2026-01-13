@@ -112,16 +112,20 @@ All endpoints return JSON responses. Use URL-encoding for parameters (e.g., spac
   | `sequence`  | string  | No       | Comma-separated source IDs (e.g., "1,3,5"); requires `pass=true`.           | -       |
 
   **Source Sequence**:
-| ID | Source Name   | Type   | Notes                                    |
-| -- | ------------- | ------ | ---------------------------------------- |
-| 1  | Genius        | Plain  | Tried first by default                   |
-| 2  | LRCLIB        | Synced | Preferred for synced lyrics              |
-| 3  | SimpMusic     | Synced | Fallback synced source                   |
-| 4  | YouTube Music | Plain  | Requires authentication for best results |
-| 5  | Lyrics.ovh    | Plain  | Simple fallback                          |
-| 6  | ChartLyrics   | Plain  | Final fallback                           |
+  1 → Genius
+  2 → LRCLIB
+  3 → SimpMusic
+  4 → YouTube Music
+  5 → Lyrics.ovh
+  6 → ChartLyrics
+  Plain lyrics default sequence:
+  -[1, 2, 3, 4, 5, 6]
 
-- **Example Requests**:
+  Synced lyrics default sequence:
+  -[2, 3, 4]
+
+
+  **Example Requests**:
   - Basic (plain lyrics):
     ```
     curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho"
