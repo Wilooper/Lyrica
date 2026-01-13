@@ -5,12 +5,7 @@ import os
 from src.logger import get_logger
 from src.cache import make_cache_key, load_from_cache, save_to_cache, clear_cache, cache_stats
 from src.fetch_controller import (
-    fetch_lyrics_controller,
-    fetch_search_suggestions,
-    fetch_music_search,
-    fetch_trending_music,
-    fetch_stream,
-    fetch_suggestions,
+    fetch_lyrics_controller
 )
 from src.sources.jiosaavan_fetcher import search_jiosaavn, get_jiosaavn_stream
 
@@ -101,33 +96,7 @@ def register_routes(app):
         results = fetch_music_search(query)
         return jsonify({"status": "success", "results": results})
 
-    @app.route("/api/trending", methods=["GET"])
-    def music_trending():
-        country = request.args.get("country", "IN").upper()
-        results = fetch_trending_music(country)
-        return jsonify({"status": "success", "country": country, "results": results})
-
-    @app.route("/api/play", methods=["GET"])
-    def music_play():
-        video_id = request.args.get("videoId", "").strip()
-        if not video_id:
-            return jsonify({"status": "error", "error": {"message": "videoId is required"}}), 400
-
-        data = fetch_stream(video_id)
-        if not data:
-            return jsonify({"status": "error", "error": {"message": "Unable to fetch stream"}}), 500
-
-        return jsonify({"status": "success", "data": data})
-
-    @app.route("/api/suggestions", methods=["GET"])
-    def music_suggestions():
-        video_id = request.args.get("videoId", "").strip()
-        if not video_id:
-            return jsonify({"status": "error", "error": {"message": "videoId is required"}}), 400
-
-        results = fetch_suggestions(video_id)
-        return jsonify({"status": "success", "results": results})
-
+    
     @app.route("/api/jiosaavn/search", methods=["GET"])
     def jiosaavn_search():
         query = request.args.get("q", "").strip()
@@ -148,15 +117,6 @@ def register_routes(app):
             return jsonify({"status": "error", "error": {"message": "Unable to fetch stream"}}), 500
 
         return jsonify({"status": "success", "data": data})
-
-    @app.route("/api/search-suggest")
-    def search_suggest():
-        query = request.args.get("q", "").strip()
-        if len(query) < 2:
-            return jsonify([])
-
-        suggestions = fetch_search_suggestions(query)
-        return jsonify(suggestions)
 
     @app.route("/app")
     def app_page():
@@ -179,9 +139,3 @@ def register_routes(app):
     def favicon():
         return "", 204
 
-    @app.route('/a1/v1/#', methods=['GET', 'POST'])
-    def ipa1v1():
-        # Note: Running os.system('tor') inside a route will block the thread
-        # and likely fail on most hosted platforms.
-        os.system('tor')
-        return jsonify({"status": "attempting to start tor"})
