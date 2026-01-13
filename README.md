@@ -38,7 +38,7 @@ Lyrica does not require user authentication but relies on environment variables 
 
 - **GENIUS_TOKEN**: Required for Genius API fallback (obtain from [Genius API Clients](https://genius.com/api-clients)).
 - **YOUTUBE_COOKIE**: Optional for enhanced YouTube Music access.
-- NOTE- *for youtube cookie file you have to rename or make file with the name of *headers.json* otherwise you may get problems*
+- NOTE- *for youtube cookie file you have to rename or make file with the name of `headers.json` otherwise you may get problems*
 - **ADMIN_KEY**: Required for admin cache endpoints.
 - **RATE_LIMIT_STORAGE_URI**: Defaults to `memory://`; use `redis://` for production.
 
