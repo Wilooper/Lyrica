@@ -10,3 +10,4 @@ Flask-Limiter
 flask[async]==3.0.0
 Werkzeug==3.0.1
 yt-dlp
+textblob
