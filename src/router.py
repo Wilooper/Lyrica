@@ -4,9 +4,8 @@ import os
 
 from src.logger import get_logger
 from src.cache import make_cache_key, load_from_cache, save_to_cache, clear_cache, cache_stats
-from src.fetch_controller import (
-    fetch_lyrics_controller
-)
+from src.fetch_controller import fetch_lyrics_controller
+from src.sentiment_analyzer import analyze_sentiment, analyze_word_frequency, extract_lyrics_text
 from src.sources.jiosaavan_fetcher import search_jiosaavn, get_jiosaavn_stream
 
 logger = get_logger("router")
@@ -20,7 +19,28 @@ def register_routes(app):
                 "version": app.config.get("VERSION"),
                 "status": "active",
                 "endpoints": {
-                    "lyrics": "/lyrics/?artist=ARTIST&song=SONG&timestamps=true&pass=false&sequence=1,2,3"
+                    "lyrics": "/lyrics/?artist=ARTIST&song=SONG",
+                    "lyrics_synced": "/lyrics/?artist=ARTIST&song=SONG&timestamps=true",
+                    "lyrics_fast": "/lyrics/?artist=ARTIST&song=SONG&fast=true",
+                    "lyrics_with_mood": "/lyrics/?artist=ARTIST&song=SONG&mood=true",
+                    "lyrics_all_features": "/lyrics/?artist=ARTIST&song=SONG&timestamps=true&fast=true&mood=true"
+                },
+                "parameters": {
+                    "artist": "Required - Artist name",
+                    "song": "Required - Song title",
+                    "timestamps": "Optional - Get synced lyrics (true/false)",
+                    "fast": "Optional - Use parallel fetching (true/false)",
+                    "mood": "Optional - Analyze song mood/sentiment (true/false)",
+                    "pass": "Optional - Custom fetcher sequence (true/false)",
+                    "sequence": "Optional with pass=true - Comma-separated fetcher IDs (1-6)"
+                },
+                "fetchers": {
+                    "1": "Genius",
+                    "2": "LRCLIB",
+                    "3": "SimpMusic",
+                    "4": "YouTube Music",
+                    "5": "Lyrics.ovh",
+                    "6": "ChartLyrics"
                 },
                 "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
             }
@@ -36,6 +56,8 @@ def register_routes(app):
         )
         pass_param = request.args.get("pass", "false").lower() == "true"
         sequence = request.args.get("sequence", None)
+        fast_mode = request.args.get("fast", "false").lower() == "true"
+        analyze_mood = request.args.get("mood", "false").lower() == "true"
 
         if not artist or not song:
             return (
@@ -61,7 +83,7 @@ def register_routes(app):
                 400,
             )
 
-        logger.info(f"Lyrics request received for {artist} - {song}")
+        logger.info(f"Lyrics request received for {artist} - {song} (fast={fast_mode}, mood={analyze_mood})")
         
         # 1. Check Cache First
         cache_key = make_cache_key(artist, song, timestamps, sequence)
@@ -69,21 +91,44 @@ def register_routes(app):
 
         if cached:
             logger.info(f"Cache hit for {artist} - {song}")
-            return jsonify(cached)
+            result = cached
+        else:
+            # 2. Fetch Fresh Data
+            result = await fetch_lyrics_controller(
+                artist, song, 
+                timestamps=timestamps, 
+                pass_param=pass_param, 
+                sequence=sequence,
+                fast_mode=fast_mode
+            )
 
-        # 2. Fetch Fresh Data
-        result = await fetch_lyrics_controller(
-            artist, song, timestamps=timestamps, pass_param=pass_param, sequence=sequence
-        )
+            # 3. Cache if successful
+            if result.get("status") == "success":
+                data = result.get("data", {})
+                if data.get("lyrics") or data.get("plain_lyrics") or data.get("lyrics_text"):
+                    save_to_cache(cache_key, result)
+                else:
+                    logger.warning(f"Fetch successful but no lyrics content found for {artist} - {song}. Skipping cache.")
 
-        # 3. IMPROVED CACHE LOGIC: Only cache if lyrics are actually present
-        if result.get("status") == "success":
+        # 4. Analyze mood if requested
+        if analyze_mood and result.get("status") == "success":
             data = result.get("data", {})
-            # Validate that there is actual text in lyrics or plain_lyrics
-            if data.get("lyrics") or data.get("plain_lyrics") or data.get("lyrics_text"):
-                save_to_cache(cache_key, result)
+            lyrics_text = extract_lyrics_text(data)
+            
+            if lyrics_text:
+                sentiment = analyze_sentiment(lyrics_text)
+                word_freq = analyze_word_frequency(lyrics_text, top_n=5)
+                
+                result["mood_analysis"] = {
+                    "sentiment": sentiment,
+                    "top_words": word_freq
+                }
+                logger.info(f"Mood analysis completed: {sentiment['mood']}")
             else:
-                logger.warning(f"Fetch successful but no lyrics content found for {artist} - {song}. Skipping cache.")
+                logger.warning("Could not extract lyrics text for mood analysis")
+                result["mood_analysis"] = {
+                    "error": "Unable to extract lyrics for analysis"
+                }
 
         return jsonify(result)
 
@@ -138,4 +183,3 @@ def register_routes(app):
     @app.route("/favicon.ico")
     def favicon():
         return "", 204
-
