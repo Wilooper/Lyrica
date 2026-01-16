@@ -11,7 +11,7 @@
 # Whats new:-
 - Added text blob so you can get mood of lyrics
 - Added a new endpoint for fast Lrc fetch it runs LRClib and Simpmusic parallely to get lyrics asap
-- *&pass=true&sequence=1,2,3,* endpoint is disable for some time so dont use them otger wise you may get some problems
+- *&pass=true&sequence=1,2,3,* endpoint is disable for some time so dont use them other wise you may get some problems
 - Thanks for reading
 
 
