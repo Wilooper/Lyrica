@@ -6,9 +6,12 @@ from src.logger import get_logger
 from src.cache import make_cache_key, load_from_cache, save_to_cache, clear_cache, cache_stats
 from src.fetch_controller import fetch_lyrics_controller
 from src.sentiment_analyzer import analyze_sentiment, analyze_word_frequency, extract_lyrics_text
+from src.metadata_extractor import enhance_lyrics_with_metadata, get_metadata_only
 from src.sources.jiosaavan_fetcher import search_jiosaavn, get_jiosaavn_stream
 
 logger = get_logger("router")
+
+
 
 def register_routes(app):
     @app.route("/")
@@ -16,14 +19,16 @@ def register_routes(app):
         return jsonify(
             {
                 "api": "Lyrica",
-                "version": app.config.get("VERSION"),
+                "version": app.config.get("VERSION", "1.0.0"),  # Default version if not set
                 "status": "active",
                 "endpoints": {
                     "lyrics": "/lyrics/?artist=ARTIST&song=SONG",
                     "lyrics_synced": "/lyrics/?artist=ARTIST&song=SONG&timestamps=true",
                     "lyrics_fast": "/lyrics/?artist=ARTIST&song=SONG&fast=true",
                     "lyrics_with_mood": "/lyrics/?artist=ARTIST&song=SONG&mood=true",
-                    "lyrics_all_features": "/lyrics/?artist=ARTIST&song=SONG&timestamps=true&fast=true&mood=true"
+                    "lyrics_with_metadata": "/lyrics/?artist=ARTIST&song=SONG&metadata=true",
+                    "lyrics_all_features": "/lyrics/?artist=ARTIST&song=SONG&timestamps=true&fast=true&mood=true&metadata=true",
+                    "metadata_only": "/metadata/?artist=ARTIST&song=SONG"
                 },
                 "parameters": {
                     "artist": "Required - Artist name",
@@ -31,6 +36,7 @@ def register_routes(app):
                     "timestamps": "Optional - Get synced lyrics (true/false)",
                     "fast": "Optional - Use parallel fetching (true/false)",
                     "mood": "Optional - Analyze song mood/sentiment (true/false)",
+                    "metadata": "Optional - Include song metadata (true/false, default: false)",
                     "pass": "Optional - Custom fetcher sequence (true/false)",
                     "sequence": "Optional with pass=true - Comma-separated fetcher IDs (1-6)"
                 },
@@ -58,6 +64,7 @@ def register_routes(app):
         sequence = request.args.get("sequence", None)
         fast_mode = request.args.get("fast", "false").lower() == "true"
         analyze_mood = request.args.get("mood", "false").lower() == "true"
+        include_metadata = request.args.get("metadata", "false").lower() == "true"  # Added handling for metadata param
 
         if not artist or not song:
             return (
@@ -83,7 +90,7 @@ def register_routes(app):
                 400,
             )
 
-        logger.info(f"Lyrics request received for {artist} - {song} (fast={fast_mode}, mood={analyze_mood})")
+        logger.info(f"Lyrics request: {artist} - {song} (fast={fast_mode}, mood={analyze_mood}, metadata={include_metadata})")
         
         # 1. Check Cache First
         cache_key = make_cache_key(artist, song, timestamps, sequence)
@@ -123,12 +130,15 @@ def register_routes(app):
                     "sentiment": sentiment,
                     "top_words": word_freq
                 }
-                logger.info(f"Mood analysis completed: {sentiment['mood']}")
+                logger.info(f"Mood analysis: {sentiment['mood']}")
             else:
-                logger.warning("Could not extract lyrics text for mood analysis")
-                result["mood_analysis"] = {
-                    "error": "Unable to extract lyrics for analysis"
-                }
+                logger.warning("Could not extract lyrics for mood analysis")
+                result["mood_analysis"] = {"error": "Unable to extract lyrics for analysis"}
+
+        # 5. Include metadata if requested
+        if include_metadata and result.get("status") == "success":
+            result = enhance_lyrics_with_metadata(result, artist, song)
+            logger.info(f"Metadata enhanced for {artist} - {song}")
 
         return jsonify(result)
 
@@ -179,6 +189,29 @@ def register_routes(app):
     def route_cache_stats():
         stats = cache_stats()
         return jsonify({"status": "success", **stats})
+
+    @app.route("/metadata/", methods=["GET"])
+    def metadata():
+        """Get song metadata only (without lyrics)"""
+        artist = request.args.get("artist", "").strip()
+        song = request.args.get("song", "").strip()
+        
+        if not artist or not song:
+            return (
+                jsonify({
+                    "status": "error",
+                    "error": {
+                        "message": "Artist and song name are required",
+                        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                    },
+                }),
+                400,
+            )
+        
+        logger.info(f"Metadata request for {artist} - {song}")
+        result = get_metadata_only(artist, song)
+        
+        return jsonify(result)
 
     @app.route("/favicon.ico")
     def favicon():
