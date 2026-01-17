@@ -1,6 +1,8 @@
 from flask import jsonify, request, render_template
 from datetime import datetime, timezone
 import os
+import asyncio
+import logging
 
 from src.logger import get_logger
 from src.cache import make_cache_key, load_from_cache, save_to_cache, clear_cache, cache_stats
@@ -10,6 +12,24 @@ from src.metadata_extractor import enhance_lyrics_with_metadata, get_metadata_on
 from src.sources.jiosaavan_fetcher import search_jiosaavn, get_jiosaavn_stream
 
 logger = get_logger("router")
+
+# Helper function to run async functions in sync context
+def run_async(coro, timeout=30):
+    """Run async coroutine safely in sync context with timeout"""
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # If loop is already running, use nest_asyncio or create new event loop
+            import nest_asyncio
+            nest_asyncio.apply()
+            return asyncio.run(coro)
+        return loop.run_until_complete(asyncio.wait_for(coro, timeout=timeout))
+    except asyncio.TimeoutError:
+        logger.error("Async operation timed out")
+        raise Exception("Request timed out - operation took too long")
+    except RuntimeError:
+        # No event loop in current thread, create new one
+        return asyncio.run(asyncio.wait_for(coro, timeout=timeout))
 
 
 def register_routes(app):
@@ -195,13 +215,29 @@ def register_routes(app):
 
         # 2. Fetch Fresh Data
         try:
-            result = fetch_lyrics_controller(
-                artist,
-                song,
-                timestamps=timestamps,
-                pass_param=pass_param,
-                sequence=sequence,
-                fast_mode=fast_mode,
+            result = run_async(
+                fetch_lyrics_controller(
+                    artist,
+                    song,
+                    timestamps=timestamps,
+                    pass_param=pass_param,
+                    sequence=sequence,
+                    fast_mode=fast_mode,
+                ),
+                timeout=60
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout fetching lyrics for {artist} - {song}")
+            return (
+                jsonify({
+                    "status": "error",
+                    "error": {
+                        "message": "Request timed out",
+                        "details": "Lyrics fetch took too long",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                }),
+                504,
             )
         except Exception as e:
             logger.error(f"Error fetching lyrics: {str(e)}")
@@ -211,6 +247,20 @@ def register_routes(app):
                     "error": {
                         "message": "Failed to fetch lyrics",
                         "details": str(e),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                }),
+                500,
+            )
+
+        # Validate result is a dictionary
+        if not isinstance(result, dict):
+            logger.error(f"Invalid result type from fetch_lyrics_controller: {type(result)}")
+            return (
+                jsonify({
+                    "status": "error",
+                    "error": {
+                        "message": "Invalid response from lyrics fetcher",
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     },
                 }),
@@ -245,7 +295,11 @@ def register_routes(app):
         # 4. Include metadata if requested
         if include_metadata and result.get("status") == "success":
             try:
-                result = enhance_lyrics_with_metadata(result, artist, song)
+                # Check if enhance_lyrics_with_metadata is async
+                metadata_result = enhance_lyrics_with_metadata(result, artist, song)
+                if asyncio.iscoroutine(metadata_result):
+                    metadata_result = run_async(metadata_result, timeout=30)
+                result = metadata_result
                 logger.info(f"Metadata enhanced for {artist} - {song}")
             except Exception as e:
                 logger.warning(f"Metadata enhancement failed: {str(e)}")
@@ -289,6 +343,22 @@ def register_routes(app):
         
         try:
             result = get_metadata_only(artist, song)
+            # Check if get_metadata_only is async
+            if asyncio.iscoroutine(result):
+                result = run_async(result, timeout=30)
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout fetching metadata for {artist} - {song}")
+            return (
+                jsonify({
+                    "status": "error",
+                    "error": {
+                        "message": "Request timed out",
+                        "details": "Metadata fetch took too long",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                }),
+                504,
+            )
         except Exception as e:
             logger.error(f"Metadata fetch error: {str(e)}")
             return (
@@ -326,7 +396,23 @@ def register_routes(app):
         
         try:
             results = search_jiosaavn(query)
+            # Check if search_jiosaavn is async
+            if asyncio.iscoroutine(results):
+                results = run_async(results, timeout=30)
             return jsonify({"status": "success", "results": results})
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout searching JioSaavn for: {query}")
+            return (
+                jsonify({
+                    "status": "error",
+                    "error": {
+                        "message": "Request timed out",
+                        "details": "JioSaavn search took too long",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                }),
+                504,
+            )
         except Exception as e:
             logger.error(f"JioSaavn search error: {str(e)}")
             return (
@@ -362,7 +448,22 @@ def register_routes(app):
         
         try:
             data = get_jiosaavn_stream(song_link)
+            # Check if get_jiosaavn_stream is async
+            if asyncio.iscoroutine(data):
+                data = run_async(data, timeout=30)
             
+            if not data or not isinstance(data, dict):
+                return (
+                    jsonify({
+                        "status": "error",
+                        "error": {
+                            "message": "Invalid response from JioSaavn",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        },
+                    }),
+                    500,
+                )
+
             if not data.get("stream_url"):
                 return (
                     jsonify({
@@ -376,6 +477,19 @@ def register_routes(app):
                 )
 
             return jsonify({"status": "success", "data": data})
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout fetching stream for: {song_link}")
+            return (
+                jsonify({
+                    "status": "error",
+                    "error": {
+                        "message": "Request timed out",
+                        "details": "Stream fetch took too long",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                }),
+                504,
+            )
         except Exception as e:
             logger.error(f"JioSaavn play error: {str(e)}")
             return (
@@ -397,7 +511,13 @@ def register_routes(app):
             return render_template("index.html")
         except Exception as e:
             logger.error(f"Failed to render app page: {str(e)}")
-            return "", 204
+            return jsonify({
+                "status": "error",
+                "error": {
+                    "message": "Failed to load application",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+            }), 500
 
     @app.route("/cache/stats", methods=["GET"])
     def route_cache_stats():
