@@ -1,338 +1,247 @@
-# Lyrica API Documentation
+# Lyrica - Open Source Lyrics API
 
-![Made in India](https://img.shields.io/badge/Made%20in-India-blue.svg) ![Python](https://img.shields.io/badge/Python-3.12%2B-brightgreen.svg) ![License](https://img.shields.io/badge/License-MIT-yellow.svg) ![Flask](https://img.shields.io/badge/Flask-3.0.0-blue.svg)
+![Made in India](https://img.shields.io/badge/Made%20in-India-blue.svg) ![Python](https://img.shields.io/badge/Python-3.12%2B-brightgreen.svg) ![License](https://img.shields.io/badge/License-MIT-yellow.svg) ![Flask](https://img.shields.io/badge/Flask-3.0.0-blue.svg) ![Status](https://img.shields.io/badge/Status-Active-success.svg)
 
-## Overview
+A powerful, open-source RESTful API for retrieving song lyrics with advanced features like mood analysis, timestamped lyrics, metadata extraction, and multi-source aggregation. Built with Python and Flask, optimized for Bollywood and global music queries.
 
-**Lyrica** is an open-source RESTful API for retrieving song lyrics from multiple sources, developed with a focus on accessibility and reliability in India 🇮🇳. It prioritizes high-quality sources like YouTube Music for timestamped lyrics and falls back to LrcLib, Genius, Lyrics.ovh, ChartLyrics, LyricsFreak, and Simp Music for comprehensive coverage. The API is built on Flask, supports asynchronous operations, includes caching for performance, rate limiting for stability, CORS for web integration, and detailed logging for debugging.
+## ✨ Key Features
 
-# Last Updated:-
-- *15/jan/2026 at 11:25 am*
-# Whats new:-
-- Added text blob so you can get mood of lyrics
-- Added a new endpoint for fast Lrc fetch it runs LRClib and Simpmusic parallely to get lyrics asap
-- *&pass=true&sequence=1,2,3,* endpoint is disable for some time so dont use them other wise you may get some problems
-- Thanks for reading
+- **Multi-Source Lyrics Retrieval** - Aggregates from 6 premium sources with intelligent fallback
+- **Timestamped Lyrics (LRC)** - Synchronized lyrics with millisecond precision from YouTube Music and LrcLib
+- **Mood & Sentiment Analysis** - AI-powered sentiment detection and word frequency analysis
+- **Rich Metadata** - Song cover art, duration, genre, release date, and artist info
+- **Smart Caching** - TTL-based caching (5 min default) to reduce external API calls
+- **Rate Limiting** - 15 requests/minute per IP with Redis support for distributed systems
+- **Fast Mode** - Parallel fetching for sub-second response times
+- **CORS-Enabled** - Production-ready for frontend integration
+- **Interactive GUI** - Built-in web interface for testing and exploration
+- **Admin Tools** - Cache management and statistics endpoints
+- **Comprehensive Logging** - Debug and monitor with detailed request/response logs
+- **Made in India** 🇮🇳 - Optimized for Indian music platforms (JioSaavn integration)
 
+## 🎵 Supported Sources
 
-### Key Features
-- **Multi-Source Lyrics Retrieval**: Aggregates from 7 sources with prioritized sequencing.
-- **Timestamped Lyrics**: Supports synchronized (LRC-style) lyrics from YouTube Music and LrcLib.
-- **Caching**: TTL-based (default: 5 minutes) to minimize external API calls.
-- **Rate Limiting**: 15 requests per minute per IP (customizable via Redis).
-- **CORS-Enabled**: Ideal for frontend applications.
-- **Admin Tools**: Secure endpoints for cache management.
-- **GUI Tester**: Built-in web interface for interactive testing.
-- **Made in India**: Optimized for Bollywood and regional music queries.
+| ID | Source | Lyrics Type | Speed |
+|----|--------|-------------|-------|
+| 1 | Genius | Plain | Medium |
+| 2 | LRCLIB | Timestamped | Slow |
+| 3 | SimpMusic | Plain | Fast |
+| 4 | YouTube Music | Timestamped | Medium |
+| 5 | Lyrics.ovh | Plain | Fast |
+| 6 | ChartLyrics | Plain | Fast |
 
-### Base URL
-- **Local Development**: `http://127.0.0.1:9999`
-- **Production Demo**: `https://test-0k.onrender.com`
+## 📦 Installation
 
-### Version
-- Current: `1.2.0`
+### Prerequisites
+- Python 3.12 or higher
+- pip (Python package manager)
+- Git
+- Redis (optional, for production rate limiting)
 
-## Authentication and Configuration
+### Quick Start (Local Development)
 
-Lyrica does not require user authentication but relies on environment variables for external services:
+```bash
+# 1. Clone the repository
+git clone https://github.com/Wilooper/Lyrica.git
+cd Lyrica
 
-- **GENIUS_TOKEN**: Required for Genius API fallback (obtain from [Genius API Clients](https://genius.com/api-clients)).
-- **YOUTUBE_COOKIE**: Optional for enhanced YouTube Music access.
-- NOTE- *for youtube cookie file you have to rename or make file with the name of `headers.json` otherwise you may get problems*
-- **ADMIN_KEY**: Required for admin cache endpoints.
-- **RATE_LIMIT_STORAGE_URI**: Defaults to `memory://`; use `redis://` for production.
+# 2. Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-Set these in a `.env` file or deployment platform dashboard.
+# 3. Install dependencies
+pip install -r requirements.txt
 
-## Quick Start
+# 4. Create .env file
+cat > .env << EOF
+GENIUS_TOKEN=your_genius_api_token
+ADMIN_KEY=your_secure_admin_key
+LOG_LEVEL=INFO
+CACHE_TTL=300
+EOF
 
-1. **Clone and Install**:
-   ```
-   git clone https://github.com/Wilooper/Lyrica.git
-   cd Lyrica
-   pip install -r requirements.txt
-   ```
+# 5. Run the server
+python run.py
+```
 
-2. **Configure Environment**:
-   Create `.env`:
-   ```
-   GENIUS_TOKEN=your_genius_token
-   ADMIN_KEY=your_secure_key
-   ```
+Access the API at: `http://127.0.0.1:9999`
+- Web GUI: `http://127.0.0.1:9999/app`
+- API Docs: `http://127.0.0.1:9999/`
 
-3. **Run Locally**:
-   ```
-   python run.py
-   ```
-   Access at `http://127.0.0.1:9999`.
+### Docker Setup (Optional)
 
-4. **Test with GUI**:
-   Visit `http://127.0.0.1:9999/app` for an interactive interface.
+```bash
+# Build image
+docker build -t lyrica .
 
-5. **Deploy** (e.g., Render):
-   - Push to GitHub.
-   - Connect to Render, set env vars, and deploy as a Web Service.
+# Run container
+docker run -p 9999:9999 \
+  -e GENIUS_TOKEN=your_token \
+  -e ADMIN_KEY=your_key \
+  lyrica
+```
 
-## API Endpoints
+## ⚙️ Configuration
 
-All endpoints return JSON responses. Use URL-encoding for parameters (e.g., spaces as `%20`).
+Create a `.env` file in the project root:
 
-### 1. API Metadata
-- **URL**: `GET /`
-- **Description**: Retrieves API status, version, and endpoint summary.
-- **Parameters**: None.
-- **Example Request**:
-  ```
-  curl http://127.0.0.1:9999/
-  ```
-- **Response** (200 OK):
-  ```json
-  {
-    "api": "Lyrica",
-    "version": "1.2.0",
-    "status": "active",
-    "endpoints": {
-      "lyrics": "/lyrics/?artist=ARTIST&song=SONG&timestamps=true&pass=false&sequence=1,2,3",
-      "cache": "/cache/stats",
-      "gui": "/app"
-    },
-    "timestamp": "2025-12-25 12:20:00"
-  }
-  ```
+```env
+# Required
+GENIUS_TOKEN=your_genius_api_token_here
 
-### 2. Fetch Lyrics
-- **URL**: `GET /lyrics/`
-- **Description**: Searches for lyrics by artist and song, attempting sources in sequence. Supports custom source ordering and timestamped results.
-- **Parameters**:
-  | Parameter   | Type    | Required | Description                                                                 | Default |
-  |-------------|---------|----------|-----------------------------------------------------------------------------|---------|
-  | `artist`    | string  | Yes      | Artist name (e.g., "Arijit Singh").                                         | -       |
-  | `song`      | string  | Yes      | Song title (e.g., "Tum Hi Ho").                                             | -       |
-  | `timestamps`| boolean | No       | Enable timestamped lyrics (only from YouTube Music/LrcLib).                 | false   |
-  | `pass`      | boolean | No       | Enable custom source sequence.                                              | false   |
-  | `sequence`  | string  | No       | Comma-separated source IDs (e.g., "1,3,5"); requires `pass=true`.           | -       |
+# Optional but recommended
+ADMIN_KEY=your_secure_random_key
+LOG_LEVEL=INFO
+CACHE_TTL=300
+RATE_LIMIT_STORAGE_URI=memory://
+YOUTUBE_COOKIE=path/to/headers.json
 
-  **Source Sequence**:
-  - 1 → Genius
-  - 2 → LRCLIB
-  - 3 → SimpMusic
-  - 4 → YouTube Music
-  - 5 → Lyrics.ovh
-  - 6 → ChartLyrics
-    
-  - *Plain lyrics default sequence:
-     [1, 2, 3, 4, 5, 6]*
+# Production
+RATE_LIMIT_STORAGE_URI=redis://localhost:6379/0
+```
 
-  - *Synced lyrics default sequence:
-    [2, 3, 4]*
+### Environment Variables
 
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GENIUS_TOKEN` | Yes | - | Genius API token from [genius.com/api-clients](https://genius.com/api-clients) |
+| `ADMIN_KEY` | No | - | Secure key for admin endpoints |
+| `LOG_LEVEL` | No | INFO | Logging level (DEBUG, INFO, WARNING, ERROR) |
+| `CACHE_TTL` | No | 300 | Cache time-to-live in seconds |
+| `RATE_LIMIT_STORAGE_URI` | No | memory:// | memory:// or redis://host:port/db |
+| `YOUTUBE_COOKIE` | No | - | Path to YouTube headers.json (rename from ytmusicapi) |
 
-  **Example Requests**:
-  - Basic (plain lyrics):
-    ```
-    curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho"
-    ```
-  - With timestamps:
-    ```
-    curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&timestamps=true"
-    ```
-  - Custom sequence (skip LrcLib):
-    ```
-    curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&pass=true&sequence=1,3,4"
-    ```
+## 🚀 Deployment
 
-- **Success Response** (200 OK, plain lyrics):
-  ```json
-  {
-    "status": "success",
-    "data": {
-      "source": "genius",
-      "artist": "Arijit Singh",
-      "title": "Tum Hi Ho",
-      "lyrics": "Hum tere bin ab reh nahi sakte\nTere bina kya wajood mera...",
-      "timestamp": "2025-12-25 12:20:00"
-    },
-    "attempts": [
-      {
-        "api": "youtube_music",
-        "status": "no_results",
-        "message": "No lyrics available"
-      }
-    ]
-  }
-  ```
+### Render.com
+1. Push repository to GitHub
+2. Create new Web Service on Render
+3. Set build command: `pip install -r requirements.txt`
+4. Set start command: `gunicorn -w 4 -b 0.0.0.0:9999 run:app`
+5. Add environment variables in dashboard
+6. Deploy
 
-- **Success Response** (200 OK, timestamped):
-  ```json
-  {
-    "status": "success",
-    "data": {
-      "source": "youtube_music",
-      "artist": "Arijit Singh",
-      "title": "Tum Hi Ho",
-      "lyrics": "Hum tere bin ab reh nahi sakte\nTere bina kya wajood mera...",
-      "timed_lyrics": [
-        {
-          "text": "Hum tere bin ab reh nahi sakte",
-          "start_time": 0,
-          "end_time": 10000,
-          "id": 1
-        }
-      ],
-      "hasTimestamps": true,
-      "timestamp": "2025-12-25 12:20:00"
-    },
-    "attempts": []
-  }
-  ```
+### Heroku
+```bash
+heroku create lyrica-api
+heroku config:set GENIUS_TOKEN=your_token
+git push heroku main
+```
 
-- **Error Response** (400 Bad Request, missing params):
-  ```json
-  {
-    "status": "error",
-    "error": {
-      "message": "Artist and song name are required",
-      "timestamp": "2025-12-25 12:20:00"
-    }
-  }
-  ```
+### Self-Hosted (Gunicorn + Nginx)
+```bash
+# Install Gunicorn
+pip install gunicorn
 
-- **Error Response** (404 Not Found, no lyrics):
-  ```json
-  {
-    "status": "error",
-    "error": {
-      "message": "No lyrics found for 'Tum Hi Ho' by 'Arijit Singh'",
-      "attempts": [
-        {"api": "youtube_music", "status": "no_results"},
-        {"api": "lrclib", "status": "no_results"},
-        {"api": "genius", "status": "no_results"}
-      ]
-    },
-    "timestamp": "2025-12-25 12:20:00"
-  }
-  ```
+# Run with 4 workers
+gunicorn -w 4 -b 127.0.0.1:9999 --timeout 120 run:app
 
-- **JavaScript Example** (Frontend Integration):
-  ```javascript
-  fetch('http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&timestamps=true')
-    .then(response => response.json())
-    .then(data => {
-      if (data.status === 'success') {
-        console.log('Lyrics:', data.data.lyrics);
-        if (data.data.hasTimestamps) {
-          console.log('Timed Lines:', data.data.timed_lyrics);
-        }
-      } else {
-        console.error('Error:', data.error.message);
-      }
-    })
-    .catch(error => console.error('Fetch error:', error));
-  ```
+# Configure Nginx as reverse proxy
+# See deployment guides for full setup
+```
 
-### 3. Cache Management (Admin Only)
-- **Clear Cache**:
-  - **URL**: `POST /cache/clear` or `GET /admin/cache/clear?key={ADMIN_KEY}`
-  - **Description**: Clears all cached lyrics entries.
-  - **Example**:
-    ```
-    curl -X POST http://127.0.0.1:9999/cache/clear
-    ```
-  - **Response** (200 OK):
-    ```json
-    {
-      "status": "success",
-      "details": {"cleared": 42, "timestamp": "2025-12-25 12:20:00"}
-    }
-    ```
-  - **Error** (403 Forbidden, invalid key):
-    ```json
-    {"error": "unauthorized"}
-    ```
+## 📚 Quick API Examples
 
-- **Cache Stats**:
-  - **URL**: `GET /cache/stats` or `GET /admin/cache/stats?key={ADMIN_KEY}`
-  - **Description**: Returns cache hit/miss ratios and entry counts.
-  - **Example**:
-    ```
-    curl "http://127.0.0.1:9999/admin/cache/stats?key=your_admin_key"
-    ```
-  - **Response** (200 OK):
-    ```json
-    {
-      "status": "success",
-      "hits": 150,
-      "misses": 50,
-      "total_entries": 200,
-      "timestamp": "2025-12-25 12:20:00"
-    }
-    ```
+### Basic Lyrics Request
+```bash
+curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho"
+```
 
-### 4. Interactive GUI
-- **URL**: `GET /app`
-- **Description**: A simple web-based tester for the `/lyrics/` endpoint. Enter artist/song details and view results in real-time.
-- **Example**: Navigate to `http://127.0.0.1:9999/app` in a browser.
+### With Timestamps
+```bash
+curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&timestamps=true"
+```
 
-## Rate Limiting and Errors
+### With Mood Analysis
+```bash
+curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&mood=true"
+```
 
-- **Rate Limit**: 15 requests/minute per IP. Exceeding triggers 429 Too Many Requests:
-  ```json
-  {
-    "status": "error",
-    "error": {
-      "message": "Rate limit exceeded. Please wait 35 seconds before retrying."
-    }
-  }
-  ```
-  Header: `Retry-After: 35`
+### With Metadata
+```bash
+curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&metadata=true"
+```
 
-- **Common Errors**:
-  - 400: Invalid/missing parameters.
-  - 403: Admin access denied.
-  - 429: Rate limit exceeded.
-  - 500: Internal server error (check logs).
+### Fast Mode (All Features)
+```bash
+curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&fast=true&timestamps=true&mood=true&metadata=true"
+```
 
-## Usage Best Practices
+## 🛠️ Troubleshooting
 
-- **Query Tips**: Use exact names (e.g., "Arijit Singh" not "Arijit"). Popular songs succeed more often.
-- **Timestamps**: Request only when needed; falls back gracefully if unavailable.
-- **Custom Sequences**: Use for optimization (e.g., skip slow sources: `&pass=true&sequence=3,4,5`).
-- **Caching**: Responses are cached for 5 minutes; use admin tools to invalidate.
-- **Monitoring**: Enable logging (`LOG_LEVEL=DEBUG` in `.env`) for troubleshooting.
-- **Production Scaling**: Integrate Redis for distributed caching/rate limiting.
+### No Lyrics Found
+- Verify artist and song names are exact
+- Check internet connection
+- Review server logs: `tail -f logs/app.log`
+- Try popular songs first
 
-## Deployment Guide
+### Genius API Errors
+- Regenerate token at [genius.com/api-clients](https://genius.com/api-clients)
+- Verify token in `.env`
+- Check token hasn't expired
 
-- **Local**: `python run.py`
-- **Production (Gunicorn)**:
-  ```
-  gunicorn -w 4 -b 0.0.0.0:9999 run:app
-  ```
-- **Platforms**: Render, Heroku, Vercel. Set env vars securely.
-- **Docker** (Optional): See `Dockerfile` in repo for containerization.
+### YouTube Music Auth Issues
+- Run `ytmusicapi setup` in project directory
+- Rename generated `headers.json` to match `YOUTUBE_COOKIE` path
+- Verify file has proper authentication data
 
-## Troubleshooting
+### Rate Limit Issues
+- Switch to Redis backend: `RATE_LIMIT_STORAGE_URI=redis://...`
+- Increase rate limit in configuration
+- Wait for 60-second window to reset
 
-- **No Lyrics**: Verify env vars; test popular songs; check server logs.
-- **Auth Failures**: Re-run `ytmusicapi setup` for YouTube; regenerate Genius token.
-- **Rate Limits**: Switch to Redis backend.
-- **Port Conflicts**: Edit `run.py` to change `app.run(port=8080)`.
-- **Dependencies**: Run `pip install flask[async]` if async issues arise.
+### Port Already in Use
+Edit `run.py`:
+```python
+if __name__ == '__main__':
+    app.run(port=8080, debug=True)  # Change 9999 to 8080
+```
 
-## Contributing
+## 📖 Documentation
 
-Contributions are encouraged! Fork the repo, create a feature branch, add tests, and submit a PR. Follow PEP 8 and update docs as needed. Report issues via GitHub.
+- **Full API Documentation**: See [USER_GUIDE.md](USER_GUIDE.md)
+- **Swagger/OpenAPI Spec**: Available at `/swagger` endpoint
+- **Examples**: Check `/examples` directory in repository
+- **Issues**: Open GitHub issues for bugs or feature requests
 
-## Special Thanks
+## 🤝 Contributing
 
-- **sigma67**: For `ytmusicapi`.
-- **tranxuanthang & LrcLib Team**: For LRC support.
-- **maxrave-dev**: For Simp Music integration.
+Contributions are welcome! 
 
-## License
+1. Fork the repository
+2. Create feature branch: `git checkout -b feature/amazing-feature`
+3. Commit changes: `git commit -m 'Add amazing feature'`
+4. Push to branch: `git push origin feature/amazing-feature`
+5. Open Pull Request
 
-MIT License. See [LICENSE](LICENSE) for details.
+Please ensure:
+- Code follows PEP 8 style guide
+- All tests pass
+- Documentation is updated
+- Commit messages are descriptive
+
+## 📝 License
+
+MIT License © 2025 Lyrica Contributors
+
+See [LICENSE](LICENSE) file for details.
+
+## 🙏 Special Thanks
+
+- **sigma67** - [ytmusicapi](https://github.com/sigma67/ytmusicapi)
+- **tranxuanthang & LrcLib Team** - LRC lyrics support
+- **maxrave-dev** - Simp Music integration
+- **JioSaavn API** - Music metadata and streaming
+
+## 📞 Support
+
+- **Documentation**: [USER_GUIDE.md](USER_GUIDE.md)
+- **Issues**: [GitHub Issues](https://github.com/Wilooper/Lyrica/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/Wilooper/Lyrica/discussions)
+- **Email**: thinkelyorg@gmail.com
 
 ---
 
-For questions, open a GitHub issue. Happy coding with Lyrica! 🇮🇳
+**Last Updated**: January 15, 2026 | **Version**: 1.2.0
+
+Made with ❤️ in India 🇮🇳
