@@ -139,7 +139,9 @@ gunicorn -w 4 -b 127.0.0.1:9999 --timeout 120 run:app
 # Configure Nginx as reverse proxy
 # See deployment guides for full setup
 ```
-
+## NOTE:-
+- If you don't want to self host or run this project in local host you can use the following link to use prehosted server all endpoints will same as they are in local host
+- LINK:- https://test-0k.onrender.com
 ## 📚 Quick API Examples
 
 ### Basic Lyrics Request
