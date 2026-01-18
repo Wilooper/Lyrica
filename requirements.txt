@@ -6,9 +6,7 @@ beautifulsoup4
 lyricsgenius
 ytmusicapi
 gunicorn
-uvicorn
 Flask-Limiter
-redis
 flask[async]==3.0.0
 Werkzeug==3.0.1
 yt-dlp
