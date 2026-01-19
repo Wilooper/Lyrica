@@ -19,6 +19,10 @@ A powerful, open-source RESTful API for retrieving song lyrics with advanced fea
 - **Comprehensive Logging** - Debug and monitor with detailed request/response logs
 - **Made in India** 🇮🇳 - Optimized for Indian music platforms (JioSaavn integration)
 
+## What's New:-
+- Added a trending endpoint so so you can access top trending content of any country using apple music
+- Added top querry endpoint so you can get user top querries in your server
+
 ## 🎵 Supported Sources
 
 | ID | Source | Lyrics Type | Speed |
@@ -244,6 +248,6 @@ See [LICENSE](LICENSE) file for details.
 
 ---
 
-**Last Updated**: January 15, 2026 | **Version**: 1.2.0
+**Last Updated**: January 19, 2026 | **Version**: 1.2.0
 
 Made with ❤️ in India 🇮🇳
