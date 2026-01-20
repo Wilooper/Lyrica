@@ -5,8 +5,9 @@
 A powerful, open-source RESTful API for retrieving song lyrics with advanced features like mood analysis, timestamped lyrics, metadata extraction, and multi-source aggregation. Built with Python and Flask, optimized for Bollywood and global music queries.
 
 ## Before You start:-
-- This is flask version if you want fast api version then visit
-- Wilooper/LyricaV2
+- This is flask version if you want fast api version then visit:-
+  
+https://github.com/Wilooper/LyricaV2.git
 ## ✨ Key Features
 
 - **Multi-Source Lyrics Retrieval** - Aggregates from 6 premium sources with intelligent fallback
