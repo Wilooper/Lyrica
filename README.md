@@ -229,7 +229,8 @@ Please ensure:
 - All tests pass
 - Documentation is updated
 - Commit messages are descriptive
-
+- OR you can just suggest changes to made in project by opening 
+a issue i will try to solve issue ASAP
 ## 📝 License
 
 MIT License © 2025 Lyrica Contributors
