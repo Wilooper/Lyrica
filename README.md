@@ -249,6 +249,7 @@ See [LICENSE](LICENSE) file for details.
 ## 📞 Support
 
 - **Documentation**: [USER_GUIDE.md](USER_GUIDE.md)
+- **Song meaning analysis**:[song_meaning_guide.md](song_meaning_guide.md)
 - **Issues**: [GitHub Issues](https://github.com/Wilooper/Lyrica/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/Wilooper/Lyrica/discussions)
 - **Email**: thinkelyorg@gmail.com
