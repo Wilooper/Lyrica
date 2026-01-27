@@ -7,6 +7,7 @@ Welcome to the Song Meaning Analyzer API! This service helps you dive deep into 
 - This version may have a lot of bugs as it is in early stages so you may have to face trouble.
 - If you want to help me plese let me know on `thinkelyorg@gmail.com`
 i will reply asap
+
 **Base URL:** `https://terx.onrender.com`
 
 **Note for Beginners:** If you're new to APIs, think of this as a web tool where you send requests (like searching on Google) and get back structured data about songs. You can test it in your browser or use simple tools like Postman.
