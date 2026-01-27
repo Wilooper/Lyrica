@@ -22,7 +22,7 @@ https://github.com/Wilooper/LyricaV2.git
 - **Admin Tools** - Cache management and statistics endpoints
 - **Comprehensive Logging** - Debug and monitor with detailed request/response logs
 - **Made in India** 🇮🇳 - Optimized for Indian music platforms (JioSaavn integration)
-- **Song Meaning**Now can tell meaning of song and do a full song analysis
+- **Song Meaning** - Now can tell meaning of song and do a full song analysis
 
 ## What's New:-
 - Added a trending endpoint so so you can access top trending content of any country using apple music
