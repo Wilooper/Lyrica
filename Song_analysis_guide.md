@@ -2,13 +2,16 @@
 
 ## Introduction
 
-Welcome to the Song Meaning Analyzer API! This service helps you dive deep into song lyrics. You can get summaries of song meanings, break down lyrics line by line, identify themes, or spot poetic devices like metaphors and rhymes. It pulls lyrics from sources like Lyrica and uses AI to analyze them.
-
+Welcome to the Song Meaning Analyzer API! This service helps you dive deep into song lyrics. You can get summaries of song meanings, break down lyrics line by line, identify themes, or spot poetic devices like metaphors and rhymes. It pulls lyrics from Lyrica and uses AI to analyze them.
+**Note before proceeding**
+- This version may have a lot of bugs as it is in early stages so you may have to face trouble.
+- If you want to help me plese let me know on `thinkelyorg@gmail.com`
+i will reply asap
 **Base URL:** `https://terx.onrender.com`
 
 **Note for Beginners:** If you're new to APIs, think of this as a web tool where you send requests (like searching on Google) and get back structured data about songs. You can test it in your browser or use simple tools like Postman.
 
-**Note for Developers:** This API is built with Flask and integrates with external services like OpenRouter for AI and JioSaavn for music data. It's open for integration into apps, bots, or websites. Source code is available (assuming it's on GitHub—link if applicable).
+**Note for Developers:** This API is built with Flask and integrates with external services like OpenRouter for AI and Lyrica for music data. It's open for integration into apps, bots, or websites. 
 
 This is an **early version**, so you might run into bugs, slow responses, or missing features. If something doesn't work, try again later or report it. We're improving it based on feedback!
 
