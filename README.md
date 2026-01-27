@@ -27,7 +27,7 @@ https://github.com/Wilooper/LyricaV2.git
 ## What's New:-
 - Added a trending endpoint so so you can access top trending content of any country using apple music
 - Added top querry endpoint so you can get user top querries in your server
-- Added a ai engine to tell meaning of song and for full song analysis
+- Added a ai engine to tell meaning of song and for full song analysis(please refer to(song_analyis_guide.md) for detailed info)
 
 ## 🎵 Supported Sources
 
@@ -249,7 +249,7 @@ See [LICENSE](LICENSE) file for details.
 ## 📞 Support
 
 - **Documentation**: [USER_GUIDE.md](USER_GUIDE.md)
-- **Song meaning analysis**:[song_meaning_guide.md](song_meaning_guide.md)
+- **Song meaning analysis**:[song_analysis_guide.md](song_analysis_guide.md)
 - **Issues**: [GitHub Issues](https://github.com/Wilooper/Lyrica/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/Wilooper/Lyrica/discussions)
 - **Email**: thinkelyorg@gmail.com
