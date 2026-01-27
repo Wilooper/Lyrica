@@ -255,6 +255,7 @@ See [LICENSE](LICENSE) file for details.
 
 ---
 **Previous Update & Verison**:january 19,2026 & version:1.2.0
-**Last Updated**: January 26, 2026 | **Version**: 1.2.1
+
+**Latest Updated ON**: January 26, 2026 | **Version**: 1.2.1
 
 Made with ❤️ in India 🇮🇳
