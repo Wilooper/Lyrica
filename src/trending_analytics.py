@@ -1,6 +1,6 @@
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
-from collections import defaultdict
+from collections import defaultdict, deque
 import json
 from enum import Enum
 import asyncio
@@ -100,7 +100,8 @@ class TrendingAnalyticsEngine:
         self.cache_ttl = timedelta(hours=cache_ttl_hours)
         self.request_timeout = request_timeout
         self.trending_cache = {}  # {country: (data, timestamp)}
-        self.user_queries = []
+        # Bounded deque prevents unbounded memory growth on Render's 512MB free tier
+        self.user_queries = deque(maxlen=10000)
         self.query_cache = defaultdict(int)  # {query: count}
         self.country_query_cache = defaultdict(lambda: defaultdict(int))  # {country: {query: count}}
         

@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from flask_compress import Compress
 from src.logger import get_logger
 from src import __version__
 from src.router import register_routes
@@ -7,7 +8,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 import os
 
-# NEW IMPORTS for admin cache endpoints
+# Admin cache endpoints
 from src.cache import clear_cache, cache_stats
 from src.config import ADMIN_KEY
 
@@ -15,6 +16,9 @@ def create_app():
     app = Flask(__name__, template_folder="templates", static_folder="static")
     
     CORS(app, resources={r"/*": {"origins": "*", "allow_headers": ["Content-Type"], "expose_headers": ["Access-Control-Allow-Origin"]}})
+    
+    # Gzip compress all responses — reduces payload size by 60-80%
+    Compress(app)
     
     app.logger = get_logger("Lyrica")
     app.config["VERSION"] = __version__

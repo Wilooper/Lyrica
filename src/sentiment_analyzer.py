@@ -1,6 +1,7 @@
 from textblob import TextBlob
 from src.logger import get_logger
 from typing import Optional
+from functools import lru_cache
 
 logger = get_logger("sentiment_analyzer")
 
@@ -29,6 +30,7 @@ def extract_lyrics_text(result: dict) -> str:
     
     return str(lyrics_text).strip()
 
+@lru_cache(maxsize=256)
 def analyze_sentiment(lyrics_text: str) -> dict:
     """
     Analyze sentiment/mood of lyrics using TextBlob.
@@ -151,6 +153,7 @@ def generate_mood_description(polarity: float, subjectivity: float) -> str:
         else:
             return "Very Negative & Harsh"
 
+@lru_cache(maxsize=256)
 def analyze_word_frequency(lyrics_text: str, top_n: int = 10) -> dict:
     """
     Extract top sentiment words from lyrics.

@@ -4,6 +4,7 @@ from typing import Optional, Dict
 from functools import lru_cache
 from datetime import datetime
 from bs4 import BeautifulSoup
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger("metadata_extractor")
 
@@ -211,12 +212,12 @@ def get_cover_art(mbid: str) -> Optional[str]:
 @lru_cache(maxsize=500)
 def get_song_metadata(artist: str, song: str) -> Dict:
     """
-    Get comprehensive metadata from multiple free APIs
-    
+    Get comprehensive metadata from multiple free APIs in parallel.
+
     Args:
         artist: Artist name
         song: Song title
-    
+
     Returns:
         {
             "success": bool,
@@ -227,113 +228,114 @@ def get_song_metadata(artist: str, song: str) -> Dict:
     try:
         metadata = {}
         sources_used = []
-        
-        # 1. Fetch from MusicBrainz for core info
-        mb_data = get_musicbrainz_metadata(artist, song)
+
+        # Run all 4 metadata sources in parallel using a thread pool
+        # (requests.get is blocking I/O — ThreadPoolExecutor is the right tool here)
+        fetch_tasks = {
+            "musicbrainz": lambda: get_musicbrainz_metadata(artist, song),
+            "itunes":       lambda: get_itunes_metadata(artist, song),
+            "lastfm":       lambda: get_lastfm_metadata(artist, song),
+            "wikipedia":    lambda: get_wikipedia_summary(artist, song),
+        }
+
+        results = {}
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = {executor.submit(fn): name for name, fn in fetch_tasks.items()}
+            for future in as_completed(futures, timeout=12):
+                name = futures[future]
+                try:
+                    results[name] = future.result()
+                except Exception as e:
+                    logger.warning(f"Parallel metadata fetch failed for {name}: {e}")
+                    results[name] = None
+
+        mb_data    = results.get("musicbrainz")
+        itunes_data = results.get("itunes")
+        lastfm_data = results.get("lastfm")
+        wiki_data   = results.get("wikipedia")
+
+        # 1. MusicBrainz — core IDs, release info, tags
         if mb_data:
             sources_used.append("MusicBrainz")
-            
-            # Extract release info
             releases = mb_data.get("releases", [])
-            release_title = ""
-            release_date = ""
-            release_id = ""
+            release_title = release_date = release_id = ""
             if releases:
                 release = releases[0]
-                release_id = release.get("id", "")
-                release_date = release.get("date", "")
+                release_id    = release.get("id", "")
+                release_date  = release.get("date", "")
                 release_title = release.get("title", "")
 
-            # Populate fields from MusicBrainz
             metadata.update({
-                "title": mb_data.get("title", song),
+                "title":          mb_data.get("title", song),
                 "musicbrainz_id": mb_data.get("id", ""),
-                "release_id": release_id,
-                "release_date": release_date,
-                "release_title": release_title,
-                "duration_ms": mb_data.get("length", 0),
-                "tags": [tag.get("name") for tag in mb_data.get("tags", [])[:5]],
+                "release_id":     release_id,
+                "release_date":   release_date,
+                "release_title":  release_title,
+                "duration_ms":    mb_data.get("length", 0),
+                "tags":           [tag.get("name") for tag in mb_data.get("tags", [])[:5]],
             })
-
-            # Extract artist
             artist_credit = mb_data.get("artist-credit", [])
-            if artist_credit:
-                metadata["artist"] = artist_credit[0].get("artist", {}).get("name", artist)
-            else:
-                metadata["artist"] = artist
-
-            # Set album
+            metadata["artist"] = (
+                artist_credit[0].get("artist", {}).get("name", artist)
+                if artist_credit else artist
+            )
             metadata["album"] = release_title
 
-            # Try to get cover art
-            release_mbid = release_id
-            cover_art = get_cover_art(release_mbid)
+            cover_art = get_cover_art(release_id)
             if cover_art:
                 metadata["album_art"] = cover_art
                 sources_used.append("Cover Art Archive")
-        
-        # 2. Fetch from iTunes for additional details
-        itunes_data = get_itunes_metadata(artist, song)
+
+        # 2. iTunes — album art, duration, genre, release date
         if itunes_data:
             sources_used.append("iTunes")
-            metadata["title"] = metadata.get("title") or itunes_data["title"]
-            metadata["artist"] = itunes_data["artist"]  # Prefer iTunes for full artist name
-            metadata["album"] = metadata.get("album") or itunes_data["album"]
+            metadata["title"]        = metadata.get("title") or itunes_data["title"]
+            metadata["artist"]       = itunes_data["artist"]
+            metadata["album"]        = metadata.get("album") or itunes_data["album"]
             metadata["release_date"] = metadata.get("release_date") or itunes_data["release_date"]
-            metadata["duration_ms"] = metadata.get("duration_ms") or itunes_data["duration_ms"]
+            metadata["duration_ms"]  = metadata.get("duration_ms") or itunes_data["duration_ms"]
             if not metadata.get("album_art"):
                 metadata["album_art"] = itunes_data["album_art"]
             if not metadata.get("tags") and itunes_data["genre"]:
                 metadata["tags"] = [itunes_data["genre"]]
             metadata["itunes_url"] = itunes_data["url"]
-        
-        # 3. Scrape from Last.fm for popularity metrics and tags
-        lastfm_data = get_lastfm_metadata(artist, song)
+
+        # 3. Last.fm — playcount, listeners, tags
         if lastfm_data:
             sources_used.append("Last.fm")
-            metadata["playcount"] = lastfm_data.get("playcount", 0)
-            metadata["listeners"] = lastfm_data.get("listeners", 0)
+            metadata["playcount"]  = lastfm_data.get("playcount", 0)
+            metadata["listeners"]  = lastfm_data.get("listeners", 0)
             if not metadata.get("tags"):
                 metadata["tags"] = lastfm_data.get("tags", [])
             if not metadata.get("album"):
                 metadata["album"] = lastfm_data.get("album", "")
             metadata["lastfm_url"] = lastfm_data["url"]
-        
-        # 4. Fetch from Wikipedia for description and additional visuals
-        wiki_data = get_wikipedia_summary(artist, song)
+
+        # 4. Wikipedia — description, thumbnail, link
         if wiki_data:
             sources_used.append("Wikipedia")
             metadata.update({
-                "description": wiki_data.get("description", ""),
+                "description":   wiki_data.get("description", ""),
                 "wiki_thumbnail": wiki_data.get("thumbnail", ""),
-                "wiki_url": wiki_data.get("url", "")
+                "wiki_url":      wiki_data.get("url", ""),
             })
-        
+
         if not metadata:
             return {
                 "success": False,
                 "error": f"No metadata found for '{song}' by '{artist}'",
                 "sources": []
             }
-        
-        # Calculate popularity score (0-100) from listeners if available
+
+        # Popularity score 0-100
         listeners = metadata.get("listeners", 0)
-        popularity = min(100, max(0, int((listeners / 10000) ** 0.5 * 10))) if listeners else 0  # Adjusted formula for better scaling
-        metadata["popularity"] = popularity
-        
-        return {
-            "success": True,
-            "metadata": metadata,
-            "sources": sources_used
-        }
-    
+        metadata["popularity"] = min(100, max(0, int((listeners / 10000) ** 0.5 * 10))) if listeners else 0
+
+        return {"success": True, "metadata": metadata, "sources": sources_used}
+
     except Exception as e:
         logger.error(f"Metadata retrieval error: {str(e)}")
-        return {
-            "success": False,
-            "error": str(e),
-            "sources": []
-        }
+        return {"success": False, "error": str(e), "sources": []}
 
 def format_metadata(metadata: Dict) -> Dict:
     """

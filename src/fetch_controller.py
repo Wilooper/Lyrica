@@ -5,6 +5,7 @@ from src.utils import maybe_await
 from src.sources import ALL_FETCHERS
 from src.validator import validate_and_filter_results
 import logging
+from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
 
 logger = get_logger("fetch_controller")
 
@@ -25,12 +26,22 @@ DEFAULT_PLAIN_SEQUENCE = [1, 2, 3, 4, 5, 6]
 FAST_MODE_SEQUENCE = [2, 3]  # LRCLIB and SimpMusic
 
 async def fetch_with_timeout(api_name: str, fetcher, artist_name: str, song_title: str, timestamps: bool, timeout: int = 10):
-    """Fetch with timeout protection"""
-    try:
-        result = await asyncio.wait_for(
+    """Fetch with timeout protection and automatic retry on transient failures"""
+
+    @retry(
+        wait=wait_exponential(multiplier=0.5, min=1, max=4),
+        stop=stop_after_attempt(2),
+        retry=retry_if_exception_type(Exception),
+        reraise=True
+    )
+    async def _fetch_with_retry():
+        return await asyncio.wait_for(
             maybe_await(fetcher.fetch, artist_name, song_title, timestamps=timestamps),
             timeout=timeout
         )
+
+    try:
+        result = await _fetch_with_retry()
         # Validate result has actual lyrics
         if result and (not timestamps or result.get("hasTimestamps") or result.get("timed_lyrics") or result.get("timestamped")):
             return {"api": api_name, "result": result, "success": True}

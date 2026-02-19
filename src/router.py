@@ -11,6 +11,7 @@ from src.sentiment_analyzer import analyze_sentiment, analyze_word_frequency, ex
 from src.metadata_extractor import enhance_lyrics_with_metadata, get_metadata_only
 from src.sources.jiosaavan_fetcher import search_jiosaavn, get_jiosaavn_stream
 from src.trending_analytics import TrendingAnalyticsEngine, Country
+from src.config import ADMIN_KEY
 
 logger = get_logger("router")
 
@@ -824,6 +825,13 @@ def register_routes(app):
     @app.route("/cache/clear", methods=["POST"])
     def route_clear_cache():
         """Clear all cached data (Admin only)"""
+        # Require admin key via query param or header
+        key = request.args.get("key") or request.headers.get("X-ADMIN-KEY")
+        if not ADMIN_KEY or key != ADMIN_KEY:
+            return (
+                jsonify({"status": "error", "error": {"message": "Unauthorized"}}),
+                403,
+            )
         try:
             res = clear_cache()
             logger.info("Cache cleared")

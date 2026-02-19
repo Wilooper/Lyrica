@@ -9,7 +9,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Caching (Render safe)
 CACHE_DIR = os.getenv("CACHE_DIR") or os.path.join(BASE_DIR, "cache_data")
-CACHE_TTL = int(os.getenv("CACHE_TTL", 300))  # seconds
+CACHE_TTL = int(os.getenv("CACHE_TTL", 86400))  # seconds (default: 24 hours — lyrics never change)
 
 # Admin security key (MUST be set on Render)
 ADMIN_KEY = os.getenv("ADMIN_KEY")
