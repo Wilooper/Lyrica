@@ -1,0 +1,1340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Lyrica API Debug Report</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3352;
+      --text: #e0e4f0;
+      --muted: #7a82a0;
+      --pass: #27ae60;
+      --fail: #e74c3c;
+      --warn: #e67e22;
+      --skip: #7f8c8d;
+      --blue: #4a9eba;
+      --radius: 10px;
+    }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif; font-size:14px; line-height:1.6; }
+    a { color:var(--blue); }
+
+    /* ── Header ── */
+    .header { background:linear-gradient(135deg,#1b3a5c 0%,#0f1117 100%); padding:40px 40px 32px; border-bottom:2px solid var(--border); }
+    .header-row { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:24px; }
+    .header h1 { font-size:2rem; font-weight:800; color:#fff; letter-spacing:-0.5px; }
+    .header .subtitle { color:var(--blue); font-size:0.95rem; margin-top:4px; }
+    .header .meta { color:var(--muted); font-size:0.82rem; margin-top:8px; }
+
+    /* ── Score ring ── */
+    .score-ring { position:relative; width:110px; height:110px; flex-shrink:0; }
+    .score-ring svg { transform:rotate(-90deg); }
+    .score-ring .score-label { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+    .score-label .pct { font-size:1.6rem; font-weight:800; color:#27ae60; }
+    .score-label .lbl { font-size:0.68rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+
+    /* ── Stat bar ── */
+    .stat-bar { display:flex; gap:12px; margin-top:28px; flex-wrap:wrap; }
+    .stat { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px 20px; min-width:110px; text-align:center; }
+    .stat .val { font-size:1.9rem; font-weight:800; }
+    .stat .key { font-size:0.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-top:2px; }
+    .stat.s-pass .val { color:var(--pass); }
+    .stat.s-fail .val { color:var(--fail); }
+    .stat.s-warn .val { color:var(--warn); }
+    .stat.s-skip .val { color:var(--skip); }
+    .stat.s-avg  .val { color:var(--blue); }
+
+    /* ── Filter bar ── */
+    .filter-bar { padding:16px 40px; background:var(--surface); border-bottom:1px solid var(--border); display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .filter-bar label { color:var(--muted); font-size:0.82rem; margin-right:4px; }
+    .btn-filter { border:1px solid var(--border); background:var(--surface2); color:var(--text); border-radius:6px; padding:5px 14px; cursor:pointer; font-size:0.82rem; transition:all .15s; }
+    .btn-filter:hover { border-color:var(--blue); color:var(--blue); }
+    .btn-filter.active { background:var(--blue); color:#fff; border-color:var(--blue); }
+    .btn-all { background:var(--surface2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:5px 14px; cursor:pointer; font-size:0.82rem; margin-left:auto; }
+    .btn-all:hover { border-color:var(--blue); }
+
+    /* ── Search ── */
+    .search-wrap { padding:14px 40px 0; }
+    .search-wrap input { width:100%; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:9px 14px; color:var(--text); font-size:0.9rem; outline:none; transition:border .15s; }
+    .search-wrap input:focus { border-color:var(--blue); }
+
+    /* ── Cards ── */
+    .cards { padding:20px 40px 60px; display:flex; flex-direction:column; gap:8px; }
+    .test-card { border-radius:var(--radius); border:1px solid var(--border); overflow:hidden; transition:box-shadow .15s; }
+    .test-card:hover { box-shadow:0 0 0 1px var(--blue); }
+    .card-pass { border-left:3px solid var(--pass); }
+    .card-fail { border-left:3px solid var(--fail); }
+    .card-warn { border-left:3px solid var(--warn); }
+    .card-skip { border-left:3px solid var(--skip); opacity:.7; }
+
+    .card-header { background:var(--surface); padding:13px 16px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; gap:12px; flex-wrap:wrap; }
+    .card-header:hover { background:var(--surface2); }
+    .card-left { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .card-right { display:flex; align-items:center; gap:10px; flex-shrink:0; flex-wrap:wrap; }
+
+    .badge { padding:2px 9px; border-radius:4px; font-size:0.72rem; font-weight:700; color:#fff; letter-spacing:.5px; }
+    .method-pill { padding:2px 8px; border-radius:4px; font-size:0.72rem; font-weight:700; color:#fff; }
+    .test-name { font-weight:600; font-size:0.88rem; }
+    .endpoint-label { font-family:monospace; font-size:0.78rem; color:var(--muted); }
+    .status-code { font-family:monospace; font-size:0.8rem; background:var(--surface2); padding:1px 7px; border-radius:4px; }
+    .response-time { font-family:monospace; font-size:0.8rem; padding:1px 7px; border-radius:4px; }
+    .speed-fast { background:#1a3d2b; color:#2ecc71; }
+    .speed-ok   { background:#3d2e1a; color:#e67e22; }
+    .speed-slow { background:#3d1a1a; color:#e74c3c; }
+    .chevron { color:var(--muted); font-size:0.75rem; transition:transform .2s; }
+
+    /* ── Card body ── */
+    .card-body { background:var(--surface2); padding:16px; border-top:1px solid var(--border); }
+    .checks-table { width:100%; border-collapse:collapse; margin-bottom:12px; }
+    .check-row td { padding:4px 8px; font-size:0.83rem; }
+    .detail-cell { color:var(--muted); font-family:monospace; font-size:0.78rem; }
+    .error-block { background:#3d1a1a; border:1px solid #7d3030; border-radius:6px; padding:8px 12px; color:#e74c3c; font-size:0.83rem; margin-bottom:12px; }
+    .json-preview { background:#111420; border:1px solid var(--border); border-radius:6px; padding:12px; font-size:0.75rem; color:#a6e3a1; overflow:auto; max-height:280px; white-space:pre-wrap; word-break:break-all; }
+
+    /* ── Footer ── */
+    .footer { text-align:center; padding:24px; color:var(--muted); font-size:0.78rem; border-top:1px solid var(--border); }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-row">
+    <div>
+      <h1>🎵 Lyrica API Debug Report</h1>
+      <div class="subtitle">Endpoint Health &amp; Regression Report</div>
+      <div class="meta">
+        Base URL: <strong><a href="https://test-0k.onrender.com" target="_blank">https://test-0k.onrender.com</a></strong> &nbsp;·&nbsp;
+        Generated: <strong>2026-02-19 11:25:48 UTC</strong> &nbsp;·&nbsp;
+        32 tests
+      </div>
+      <div class="stat-bar">
+        <div class="stat s-pass"><div class="val">30</div><div class="key">Passed</div></div>
+        <div class="stat s-fail"><div class="val">1</div><div class="key">Failed</div></div>
+        <div class="stat s-warn"><div class="val">1</div><div class="key">Warnings</div></div>
+        <div class="stat s-skip"><div class="val">0</div><div class="key">Skipped</div></div>
+        <div class="stat s-avg"><div class="val">2569ms</div><div class="key">Avg resp.</div></div>
+      </div>
+    </div>
+    <div class="score-ring">
+      <svg width="110" height="110" viewBox="0 0 110 110">
+        <circle cx="55" cy="55" r="46" fill="none" stroke="#2e3352" stroke-width="10"/>
+        <circle cx="55" cy="55" r="46" fill="none" stroke="#27ae60" stroke-width="10"
+          stroke-dasharray="289.02628"
+          stroke-dashoffset="20.231839599999986"
+          stroke-linecap="round"/>
+      </svg>
+      <div class="score-label">
+        <span class="pct">93%</span>
+        <span class="lbl">Health</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="filter-bar">
+  <label>Filter:</label>
+  <button class="btn-filter active" onclick="filterCards('ALL')" id="f-ALL">All (32)</button>
+  <button class="btn-filter" onclick="filterCards('PASS')" id="f-PASS">✓ Pass (30)</button>
+  <button class="btn-filter" onclick="filterCards('FAIL')" id="f-FAIL">✗ Fail (1)</button>
+  <button class="btn-filter" onclick="filterCards('WARN')" id="f-WARN">⚠ Warn (1)</button>
+  <button class="btn-filter" onclick="filterCards('SKIP')" id="f-SKIP">⏭ Skip (0)</button>
+  <button class="btn-all" onclick="expandAll()">Expand All</button>
+  <button class="btn-all" onclick="collapseAll()">Collapse All</button>
+</div>
+
+<div class="search-wrap">
+  <input type="text" placeholder="Search tests by name or endpoint…" oninput="searchCards(this.value)" id="searchInput"/>
+</div>
+
+<div class="cards" id="cards-container">
+
+        <div class="test-card card-pass" id="test-0">
+          <div class="card-header" onclick="toggleCard(0)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Health Check  GET /</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-slow">3379ms</span>
+              <span class="chevron" id="chev-0">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-0" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Returns JSON</td><td class="detail-cell"></td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Has 'api' field</td><td class="detail-cell">Lyrica</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Has 'version' field</td><td class="detail-cell">1.0-refactor</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Has 'endpoints' field</td><td class="detail-cell"></td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Status is 'active'</td><td class="detail-cell">active</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "api": "Lyrica",
+  "description": "A comprehensive lyrics API with mood analysis, metadata extraction, and trending insights",
+  "endpoints": {
+    "cache_stats": {
+      "description": "Get cache statistics",
+      "method": "GET",
+      "url": "/cache/stats"
+    },
+    "jiosaavn_play": {
+      "description": "Get playable stream URL from JioSaavn",
+      "examples": [
+        "/api/jiosaavn/play?songLink=<song_link>"
+      ],
+      "method": "GET",
+      "url": "/api/jiosaavn/play"
+    },
+    "jiosaavn_search": {
+      "description": "Search for songs on JioSaavn",
+      "examples": [
+        "/api/jiosaavn/search?q=Imagine"
+      ],
+      "method": "GET",
+      "url": "/api/jiosaavn/search"
+    },
+    "lyrics": {
+      "description": "Fetch lyrics for a song",
+      "examples": [
+        "/lyrics/?artist=The Beatles&song=Imagine",
+        "/lyrics/?artist=The Beatles&song=Imagine&timestamps=true",
+        "/lyrics/?artist=The Beatles&song=Imagine&mood=true",
+        "/lyrics/?artist=The Beatles&song=Imagine&metadata=true",
+        "/lyrics/?artist=The Beatles&song=Imagine&fast=true&timestamps=true&mood=true&metadata=true"
+      ],
+      "method": "GET",
+      "url": "/lyrics
+... (truncated)</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-1">
+          <div class="card-header" onclick="toggleCard(1)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Favicon  GET /favicon.ico</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/favicon.ico</span>
+              <span class="status-code">204</span>
+              <span class="response-time speed-ok">340ms</span>
+              <span class="chevron" id="chev-1">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-1" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 204</td><td class="detail-cell">Got 204</td></tr></tbody></table>
+            
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-2">
+          <div class="card-header" onclick="toggleCard(2)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">404 Handler  GET /nonexistent</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/nonexistent</span>
+              
+              <span class="response-time speed-ok">539ms</span>
+              <span class="chevron" id="chev-2">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-2" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 404</td><td class="detail-cell">Got 404</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Returns JSON error body</td><td class="detail-cell"></td></tr></tbody></table>
+            <pre class="json-preview">{
+  "error": {
+    "message": "Endpoint not found",
+    "timestamp": "2026-02-19T11:24:28.744715+00:00"
+  },
+  "status": "error"
+}</pre>
+          </div>
+        </div>
+        <div class="test-card card-warn" id="test-3">
+          <div class="card-header" onclick="toggleCard(3)">
+            <div class="card-left">
+              <span class="badge" style="background:#e67e22">⚠ WARN</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Lyrics Basic  GET /lyrics/?artist=karan aujla&song=softly</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/lyrics/</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-slow">13412ms</span>
+              <span class="chevron" id="chev-3">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-3" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">status == success</td><td class="detail-cell">success</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Contains lyrics text</td><td class="detail-cell">Found</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Has 'source' field</td><td class="detail-cell">youtube_music</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Has 'artist' field</td><td class="detail-cell">karan aujla</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Has 'title' field</td><td class="detail-cell">softly</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Response < 15s (first request, Render cold start allowed)</td><td class="detail-cell">13412ms</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "data": {
+    "artist": "karan aujla",
+    "hasTimestamps": false,
+    "lyrics": "ਗੱਲ ਸੁਣ ਲ ਲਲਾਰੀਆਂ ਵੇ\nਆ ਲੋਕ ਮੇਰੇ ਤੇ ਹਸਦੇ\nਪੈਸੇ ਜ਼ਿਆਦਾ ਦੇ ਦੂੰਗੀ\nMatching ਕਰਦੇਗ਼ਾਂ ਤਾਂ ਦੱਸਦੇ\nਸੁਣ ਲਾ ਵੇ ditto same ਚਾਹੀਦੀ\nਆ ਲੇ ਫੋਟੋ ਵੇ Ferrari ਲਾਲ ਦੀ\nਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ\nਵੇ ਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\nਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ ਵੇ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\n\nਓਹਦਾ ਪੰਗੇ ਲੱਗਦੇ ਆ\nਓਹਨੂ ਚਂਗੇ ਲਗਦੇ ਆ\nਤਾਂ ਹੀ ਸੋਚਾ ਕੁੰਡਲ’ਆਂ ਪਵਾ ਲਵਾ\nਸੋਚਾ ਸ਼ਰੇਆਮ ਹੋਜਾ\nਸੋਚਦੀ ਆ ਨਾਮ ਓਹਦਾ\nਗੁੱਟ ਉੱਤੇ tattoo ਬਣਵਾ ਲਵਾਂ\nਸੋਚਦੀ ਫੇਰ ਟਾਲਦੀ ਮੈਂ\nPhantom ਦੇ ਨਾਲ ਦੀ ਮੈਂ\nਇੱਕ ਹੋਰ ਕੂੜ੍ਤੀ ਸਵਾ ਲਵਾਂ\nਓਹਨੂ ਦੇਖ ਕੇ ਤਾਂ ਮੇਰੀ ਹੋ ਜਾਵੇ\nਉਮਰ ਵਧੀ ਦੇ ਨਾਲ ਦੀ\nਵੇ ਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\nਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ ਵੇ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\n\nਮੇਰੇ ਲਯੀ ਵੇਖਦੇ ਜਿਹ ਕੁੜੀਆਂ ਕਵਾਰੀਆ  ਨੇ\nਦੇਖੀ ਵੇ ਦੁਪੱਟੇ ਤੇਰੇ ਵਿਕਦੇ\nਐਂਨੀ ਸੋਹਣੀ ਚੁੰਨੀ ਲੱਗੇ ਜੱਟੀ ਤੇ ਲਯੀ ਕੇ\nਮੈਨੂ ਜਦੋਂ ਓਹੋ ਦੇਖੇ ਗਾਣਾ ਲਿਖਦੇ\nਕੱਮ ਮੈਨੂ ਬੱਡੇ ਸੁਨਿਅਰੇ ਕੋਲੋ ਕੜੇ\nਨਾਲੇ ਹਾਲੇ ਮੈਂ ਸੇਫੋੜਾ ਗੇੜਾ ਮਾਰਨਾ\nਔਂਦਾ ਐ ਪ੍ਯਾਰ ਓਹਦਾ, ਹੋਣਾ ਏ ਦੀਦਾਰ ਓਹਦਾ\nਚੱਜ ਨਾਲ ਹੋਯੀ ਮੈਂ ਤਿਆਰ ਨਾ\nਡਰ ਲਗਦਾ ਨਾ ਕਿੱਤੇ ਰਿਹ ਜਾਵਾ\nਸੱਦੀ ਨਾ ਸਡੀ ਦੇ ਨਾਲ ਦੀ\nਵੇ ਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\nਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ ਵੇ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\nਵੇ ਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲ
+... (truncated)</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-4">
+          <div class="card-header" onclick="toggleCard(4)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Lyrics Timestamps  GET /lyrics/?timestamps=true</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/lyrics/</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-slow">11924ms</span>
+              <span class="chevron" id="chev-4">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-4" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">status == success</td><td class="detail-cell">success</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">hasTimestamps or timed_lyrics present</td><td class="detail-cell">hasTimestamps=True</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "data": {
+    "album": "Karan Aujla",
+    "artist": "Karan Aujla",
+    "duration": 171.0,
+    "hasTimestamps": true,
+    "instrumental": false,
+    "lyrics": "[00:06.08] Gal sun lallaria ve\n[00:08.54] Ah lok mere te hasde\n[00:10.96] Paise jyada dedugi\n[00:13.40] Matching krdega ta dsde\n[00:15.97] Sunla ve dito same chahidi\n[00:18.68] Ah le photo ve Ferrari laal di\n[00:21.42] Chunni meri rangde lallaria\n[00:26.57] Ve chunni meri rangde lallaria\n[00:28.91] Mere yaar di gaddi de naal di\n[00:31.65] Chunni meri rangde lallaria\n[00:34.15] Mere yaar di gaddi de naal di\n[00:37.35] Oda pange lagde a\n[00:38.27] Ohnu change lagde a\n[00:39.67] Tahi socha kundla pvaalva\n[00:41.95] Socha shareaamm hoja\n[00:43.57] Sochdi aan naam ohda\n[00:44.57] Gutt te tatto bnwalava\n[00:47.29] Sochdi fer taaldi mai\n[00:48.63] Phantom de nal di mai\n[00:49.83] Ik hor kurti svaalva\n[00:52.29] Ohnu dekh ke ta Meri hojve\n[00:55.07] Meri umr vdhi de nal di\n[00:57.43] Ve chunni meri rangde lallaria\n[01:00.18] Mere yaar di gaddi de naal di\n[01:02.43] Chunni meri rangde lallaria\n[01:04.97] Mere yaar di gaddi de naal di\n[01:18.30] Mere laye dekhle je kudiye kwaria ne Dekhi ve duppate Tere vi
+... (truncated)</pre>
+          </div>
+        </div>
+        <div class="test-card card-fail" id="test-5">
+          <div class="card-header" onclick="toggleCard(5)">
+            <div class="card-left">
+              <span class="badge" style="background:#e74c3c">✗ FAIL</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Lyrics Fast Mode  GET /lyrics/?fast=true</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/lyrics/</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-slow">8057ms</span>
+              <span class="chevron" id="chev-5">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-5" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">status == success</td><td class="detail-cell">success</td></tr><tr class="check-row"><td style="color:#e74c3c;font-weight:700;width:28px">✗</td><td style="color:#e74c3c">Fast mode < 8s</td><td class="detail-cell">8057ms</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "data": {
+    "album": "Karan Aujla",
+    "artist": "Karan Aujla",
+    "duration": 171.0,
+    "hasTimestamps": false,
+    "instrumental": false,
+    "lyrics": "Gal sun lallaria ve\nAh lok mere te hasde\nPaise jyada dedugi\nMatching krdega ta dsde\nSunla ve dito same chahidi\nAh le photo ve Ferrari laal di\nChunni meri rangde lallaria\n\nVe chunni meri rangde lallaria\nMere yaar di gaddi de naal di\nChunni meri rangde lallaria\nMere yaar di gaddi de naal di\n\nOda pange lagde a\nOhnu change lagde a\nTahi socha kundla pvaalva\nSocha shareaamm hoja\nSochdi aan naam ohda\nGutt te tatto bnwalava\nSochdi fer taaldi mai\nPhantom de nal di mai\nIk hor kurti svaalva\n\nOhnu dekh ke ta Meri hojve\nMeri umr vdhi de nal di\n\nVe chunni meri rangde lallaria\nMere yaar di gaddi de naal di\nChunni meri rangde lallaria\nMere yaar di gaddi de naal di\n\nMere laye dekhle je kudiye kwaria ne Dekhi ve duppate Tere vikdee\nEni sohni chunni lagge jatti te lyi k menu Jdo oho dekhe gaana likhde\n\nKam menu bde\nSaneaare kolo karhe\nNale hle mai Sephora geda marna\nAunda ae pyar ohda\nHona ae deedar ohda\nChaj nal hoi mai Tyaar na\n\nDar lgda na kite rehjva\nSaddi na saddi de nal de\n\nVe chunni meri r
+... (truncated)</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-6">
+          <div class="card-header" onclick="toggleCard(6)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Lyrics Mood Analysis  GET /lyrics/?mood=true</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/lyrics/</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-slow">2479ms</span>
+              <span class="chevron" id="chev-6">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-6" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">status == success</td><td class="detail-cell">success</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">mood_analysis present</td><td class="detail-cell">{'sentiment': {'mood': 'Neutral', 'mood_strength': 'Weak', 'overall_mood': 'Neutral & Objective', 'p</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">mood_analysis.sentiment present</td><td class="detail-cell">{'mood': 'Neutral', 'mood_strength': 'Weak', 'overall_mood': 'Neutral & Objectiv</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">polarity is a number</td><td class="detail-cell">0.0</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "data": {
+    "artist": "karan aujla",
+    "hasTimestamps": false,
+    "lyrics": "ਗੱਲ ਸੁਣ ਲ ਲਲਾਰੀਆਂ ਵੇ\nਆ ਲੋਕ ਮੇਰੇ ਤੇ ਹਸਦੇ\nਪੈਸੇ ਜ਼ਿਆਦਾ ਦੇ ਦੂੰਗੀ\nMatching ਕਰਦੇਗ਼ਾਂ ਤਾਂ ਦੱਸਦੇ\nਸੁਣ ਲਾ ਵੇ ditto same ਚਾਹੀਦੀ\nਆ ਲੇ ਫੋਟੋ ਵੇ Ferrari ਲਾਲ ਦੀ\nਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ\nਵੇ ਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\nਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ ਵੇ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\n\nਓਹਦਾ ਪੰਗੇ ਲੱਗਦੇ ਆ\nਓਹਨੂ ਚਂਗੇ ਲਗਦੇ ਆ\nਤਾਂ ਹੀ ਸੋਚਾ ਕੁੰਡਲ’ਆਂ ਪਵਾ ਲਵਾ\nਸੋਚਾ ਸ਼ਰੇਆਮ ਹੋਜਾ\nਸੋਚਦੀ ਆ ਨਾਮ ਓਹਦਾ\nਗੁੱਟ ਉੱਤੇ tattoo ਬਣਵਾ ਲਵਾਂ\nਸੋਚਦੀ ਫੇਰ ਟਾਲਦੀ ਮੈਂ\nPhantom ਦੇ ਨਾਲ ਦੀ ਮੈਂ\nਇੱਕ ਹੋਰ ਕੂੜ੍ਤੀ ਸਵਾ ਲਵਾਂ\nਓਹਨੂ ਦੇਖ ਕੇ ਤਾਂ ਮੇਰੀ ਹੋ ਜਾਵੇ\nਉਮਰ ਵਧੀ ਦੇ ਨਾਲ ਦੀ\nਵੇ ਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\nਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ ਵੇ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\n\nਮੇਰੇ ਲਯੀ ਵੇਖਦੇ ਜਿਹ ਕੁੜੀਆਂ ਕਵਾਰੀਆ  ਨੇ\nਦੇਖੀ ਵੇ ਦੁਪੱਟੇ ਤੇਰੇ ਵਿਕਦੇ\nਐਂਨੀ ਸੋਹਣੀ ਚੁੰਨੀ ਲੱਗੇ ਜੱਟੀ ਤੇ ਲਯੀ ਕੇ\nਮੈਨੂ ਜਦੋਂ ਓਹੋ ਦੇਖੇ ਗਾਣਾ ਲਿਖਦੇ\nਕੱਮ ਮੈਨੂ ਬੱਡੇ ਸੁਨਿਅਰੇ ਕੋਲੋ ਕੜੇ\nਨਾਲੇ ਹਾਲੇ ਮੈਂ ਸੇਫੋੜਾ ਗੇੜਾ ਮਾਰਨਾ\nਔਂਦਾ ਐ ਪ੍ਯਾਰ ਓਹਦਾ, ਹੋਣਾ ਏ ਦੀਦਾਰ ਓਹਦਾ\nਚੱਜ ਨਾਲ ਹੋਯੀ ਮੈਂ ਤਿਆਰ ਨਾ\nਡਰ ਲਗਦਾ ਨਾ ਕਿੱਤੇ ਰਿਹ ਜਾਵਾ\nਸੱਦੀ ਨਾ ਸਡੀ ਦੇ ਨਾਲ ਦੀ\nਵੇ ਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\nਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ ਵੇ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\nਵੇ ਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲ
+... (truncated)</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-7">
+          <div class="card-header" onclick="toggleCard(7)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Lyrics + Metadata  GET /lyrics/?metadata=true</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/lyrics/</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-slow">19979ms</span>
+              <span class="chevron" id="chev-7">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-7" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">status == success</td><td class="detail-cell">success</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">metadata block present</td><td class="detail-cell">['album', 'album_art', 'artist', 'description', 'duration', 'links', 'listeners'</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">metadata.title present</td><td class="detail-cell">Softly</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">metadata.album_art present</td><td class="detail-cell">https://coverartarchive.org/release/4a553b47-b352-4c30-b913-</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "data": {
+    "album": "Karan Aujla",
+    "artist": "Karan Aujla",
+    "duration": 171.0,
+    "hasTimestamps": false,
+    "instrumental": false,
+    "lyrics": "Gal sun lallaria ve\nAh lok mere te hasde\nPaise jyada dedugi\nMatching krdega ta dsde\nSunla ve dito same chahidi\nAh le photo ve Ferrari laal di\nChunni meri rangde lallaria\n\nVe chunni meri rangde lallaria\nMere yaar di gaddi de naal di\nChunni meri rangde lallaria\nMere yaar di gaddi de naal di\n\nOda pange lagde a\nOhnu change lagde a\nTahi socha kundla pvaalva\nSocha shareaamm hoja\nSochdi aan naam ohda\nGutt te tatto bnwalava\nSochdi fer taaldi mai\nPhantom de nal di mai\nIk hor kurti svaalva\n\nOhnu dekh ke ta Meri hojve\nMeri umr vdhi de nal di\n\nVe chunni meri rangde lallaria\nMere yaar di gaddi de naal di\nChunni meri rangde lallaria\nMere yaar di gaddi de naal di\n\nMere laye dekhle je kudiye kwaria ne Dekhi ve duppate Tere vikdee\nEni sohni chunni lagge jatti te lyi k menu Jdo oho dekhe gaana likhde\n\nKam menu bde\nSaneaare kolo karhe\nNale hle mai Sephora geda marna\nAunda ae pyar ohda\nHona ae deedar ohda\nChaj nal hoi mai Tyaar na\n\nDar lgda na kite rehjva\nSaddi na saddi de nal de\n\nVe chunni meri r
+... (truncated)</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-8">
+          <div class="card-header" onclick="toggleCard(8)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Lyrics All Params  fast+timestamps+mood+metadata</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/lyrics/</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-ok">1253ms</span>
+              <span class="chevron" id="chev-8">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-8" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">status == success</td><td class="detail-cell">success</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">mood_analysis present</td><td class="detail-cell"></td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">metadata present</td><td class="detail-cell"></td></tr></tbody></table>
+            <pre class="json-preview">{
+  "data": {
+    "artist": "Karan Aujla",
+    "hasTimestamps": true,
+    "lyrics": "[00:05.52] Gal sun lallaria ve\n[00:08.33] Ah lok mere te hasde\n[00:10.40] Paise jyada dedugi\n[00:13.59] Matching krdega ta dsde\n[00:16.16] Sunla ve dito same chahidi\n[00:18.46] Ah le photo ve Ferrari laal di\n[00:21.24] Chunni meri rangde lallaria\n[00:26.11] Ve chunni meri rangde lallaria\n[00:28.77] Mere yaar di gaddi de naal di\n[00:31.21] Chunni meri rangde lallaria\n[00:34.02] Mere yaar di gaddi de naal di\n[00:36.74] Oda pange lagde a\n[00:38.14] Ohnu change lagde a\n[00:39.11] Tahi socha kundla pvaalva\n[00:41.85] Socha shareaamm hoja\n[00:42.98] Sochdi aan naam ohda\n[00:44.53] Gutt te tatto bnwalava\n[00:46.76] Sochdi fer taaldi mai\n[00:48.35] Phantom de nal di mai\n[00:49.79] Ik hor kurti svaalva\n[00:52.42] Ohnu dekh ke ta Meri hojve\n[00:54.56] Meri umr vdhi de nal di\n[00:57.07] Ve chunni meri rangde lallaria\n[00:59.25] Mere yaar di gaddi de naal di\n[01:02.26] Chunni meri rangde lallaria\n[01:05.00] Mere yaar di gaddi de naal di\n[01:18.17] Mere laye dekhle je kudiye kwaria ne Dekhi ve duppate Tere vikdee\n[01:22.83] Eni sohni chunni lagge jatti te lyi k menu Jdo oho dekhe gaan
+... (truncated)</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-9">
+          <div class="card-header" onclick="toggleCard(9)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Lyrics Missing Params  (expects 400)</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/lyrics/</span>
+              
+              <span class="response-time speed-ok">349ms</span>
+              <span class="chevron" id="chev-9">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-9" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 400</td><td class="detail-cell">Got 400</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Returns error body</td><td class="detail-cell">Artist and song name are required</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "error": {
+    "message": "Artist and song name are required",
+    "timestamp": "2026-02-19T11:25:26.195355+00:00"
+  },
+  "status": "error"
+}</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-10">
+          <div class="card-header" onclick="toggleCard(10)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Lyrics Custom Sequence  pass=true&sequence=2,3</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/lyrics/</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-slow">10347ms</span>
+              <span class="chevron" id="chev-10">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-10" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200 or 404</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Returns valid JSON status</td><td class="detail-cell">error</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "error": {
+    "message": "No lyrics found for 'softly' by 'karan aujla'",
+    "timestamp": "2026-02-19 11:25:36"
+  },
+  "status": "error"
+}</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-11">
+          <div class="card-header" onclick="toggleCard(11)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Lyrics Cache Hit  (2nd request should be <1000ms)</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/lyrics/</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-ok">358ms</span>
+              <span class="chevron" id="chev-11">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-11" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Cache hit is fast (<1000ms)</td><td class="detail-cell">1st=410ms  2nd=358ms</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "data": {
+    "artist": "karan aujla",
+    "hasTimestamps": false,
+    "lyrics": "ਗੱਲ ਸੁਣ ਲ ਲਲਾਰੀਆਂ ਵੇ\nਆ ਲੋਕ ਮੇਰੇ ਤੇ ਹਸਦੇ\nਪੈਸੇ ਜ਼ਿਆਦਾ ਦੇ ਦੂੰਗੀ\nMatching ਕਰਦੇਗ਼ਾਂ ਤਾਂ ਦੱਸਦੇ\nਸੁਣ ਲਾ ਵੇ ditto same ਚਾਹੀਦੀ\nਆ ਲੇ ਫੋਟੋ ਵੇ Ferrari ਲਾਲ ਦੀ\nਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ\nਵੇ ਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\nਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ ਵੇ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\n\nਓਹਦਾ ਪੰਗੇ ਲੱਗਦੇ ਆ\nਓਹਨੂ ਚਂਗੇ ਲਗਦੇ ਆ\nਤਾਂ ਹੀ ਸੋਚਾ ਕੁੰਡਲ’ਆਂ ਪਵਾ ਲਵਾ\nਸੋਚਾ ਸ਼ਰੇਆਮ ਹੋਜਾ\nਸੋਚਦੀ ਆ ਨਾਮ ਓਹਦਾ\nਗੁੱਟ ਉੱਤੇ tattoo ਬਣਵਾ ਲਵਾਂ\nਸੋਚਦੀ ਫੇਰ ਟਾਲਦੀ ਮੈਂ\nPhantom ਦੇ ਨਾਲ ਦੀ ਮੈਂ\nਇੱਕ ਹੋਰ ਕੂੜ੍ਤੀ ਸਵਾ ਲਵਾਂ\nਓਹਨੂ ਦੇਖ ਕੇ ਤਾਂ ਮੇਰੀ ਹੋ ਜਾਵੇ\nਉਮਰ ਵਧੀ ਦੇ ਨਾਲ ਦੀ\nਵੇ ਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\nਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ ਵੇ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\n\nਮੇਰੇ ਲਯੀ ਵੇਖਦੇ ਜਿਹ ਕੁੜੀਆਂ ਕਵਾਰੀਆ  ਨੇ\nਦੇਖੀ ਵੇ ਦੁਪੱਟੇ ਤੇਰੇ ਵਿਕਦੇ\nਐਂਨੀ ਸੋਹਣੀ ਚੁੰਨੀ ਲੱਗੇ ਜੱਟੀ ਤੇ ਲਯੀ ਕੇ\nਮੈਨੂ ਜਦੋਂ ਓਹੋ ਦੇਖੇ ਗਾਣਾ ਲਿਖਦੇ\nਕੱਮ ਮੈਨੂ ਬੱਡੇ ਸੁਨਿਅਰੇ ਕੋਲੋ ਕੜੇ\nਨਾਲੇ ਹਾਲੇ ਮੈਂ ਸੇਫੋੜਾ ਗੇੜਾ ਮਾਰਨਾ\nਔਂਦਾ ਐ ਪ੍ਯਾਰ ਓਹਦਾ, ਹੋਣਾ ਏ ਦੀਦਾਰ ਓਹਦਾ\nਚੱਜ ਨਾਲ ਹੋਯੀ ਮੈਂ ਤਿਆਰ ਨਾ\nਡਰ ਲਗਦਾ ਨਾ ਕਿੱਤੇ ਰਿਹ ਜਾਵਾ\nਸੱਦੀ ਨਾ ਸਡੀ ਦੇ ਨਾਲ ਦੀ\nਵੇ ਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\nਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ ਵੇ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\nਵੇ ਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲ
+... (truncated)</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-12">
+          <div class="card-header" onclick="toggleCard(12)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Metadata  GET /metadata/?artist=karan aujla&song=softly</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/metadata/</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-ok">351ms</span>
+              <span class="chevron" id="chev-12">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-12" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">status == success</td><td class="detail-cell">success</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">metadata block present</td><td class="detail-cell">['album', 'album_art', 'artist', 'description', 'duration', 'links', 'listeners', 'musicbrainz_id', </td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">title present</td><td class="detail-cell">Softly</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">duration present</td><td class="detail-cell">{'formatted': '2:35', 'ms': 155000, 'seconds': 155}</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">sources listed</td><td class="detail-cell">['MusicBrainz', 'Cover Art Archive', 'iTunes', 'Last.fm', 'Wikipedia']</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "metadata": {
+    "album": "New Years Eve Party 2024",
+    "album_art": "https://coverartarchive.org/release/4a553b47-b352-4c30-b913-0b8c9929ac6a/front",
+    "artist": "Karan Aujla & Ikky",
+    "description": "Softly may refer to:",
+    "duration": {
+      "formatted": "2:35",
+      "ms": 155000,
+      "seconds": 155
+    },
+    "links": {
+      "itunes": "https://music.apple.com/us/album/softly/1697533643?i=1697533818&uo=4",
+      "lastfm": "https://www.last.fm/music/karan%20aujla/_/softly",
+      "musicbrainz": "https://musicbrainz.org/recording/08579a38-22f9-4459-b4f3-6a8d16642bbd",
+      "wikipedia": "https://en.wikipedia.org/wiki/Softly"
+    },
+    "listeners": 0,
+    "musicbrainz_id": "08579a38-22f9-4459-b4f3-6a8d16642bbd",
+    "playcount": 0,
+    "popularity": 0,
+    "release_date": "2023-12-14",
+    "release_id": "4a553b47-b352-4c30-b913-0b8c9929ac6a",
+    "release_year": 2023,
+    "tags": [
+      "Indian Pop"
+    ],
+    "title": "Softly",
+    "wiki_thumbnail": ""
+  },
+  "sources": [
+    "MusicBrainz",
+    "Cover Art Archive",
+    "iTunes",
+    "Last.fm",
+    "Wikipedia"
+  ],
+  "status": "success",
+  "timestamp": "2026-02-19 11:25:37"
+}</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-13">
+          <div class="card-header" onclick="toggleCard(13)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Metadata Missing Params  (expects 400)</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/metadata/</span>
+              
+              <span class="response-time speed-ok">324ms</span>
+              <span class="chevron" id="chev-13">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-13" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 400</td><td class="detail-cell">Got 400</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "error": {
+    "message": "Artist and song name are required",
+    "timestamp": "2026-02-19T11:25:38.008181+00:00"
+  },
+  "status": "error"
+}</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-14">
+          <div class="card-header" onclick="toggleCard(14)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Trending Single Country  GET /trending/?country=US</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/trending/</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-ok">371ms</span>
+              <span class="chevron" id="chev-14">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-14" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">status == success</td><td class="detail-cell">success</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">trending list present</td><td class="detail-cell">5 songs</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Has songs</td><td class="detail-cell">5 songs returned</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Song has title</td><td class="detail-cell">DtMF</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Song has artist</td><td class="detail-cell">Bad Bunny</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Song has rank</td><td class="detail-cell">1</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "data": {
+    "country": "US",
+    "timestamp": "2026-02-19T11:25:38.376723+00:00",
+    "total": 5,
+    "trending": [
+      {
+        "album": "Unknown",
+        "artist": "Bad Bunny",
+        "duration_seconds": null,
+        "explicit": false,
+        "genre": "Latin",
+        "growth_rate": 0.0,
+        "plays": 0,
+        "rank": 1,
+        "song_id": "1787023936",
+        "thumbnail": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/90/5e/7e/905e7ed5-a8fa-a8f3-cd06-0028fdf3afaa/199066342442.jpg/100x100bb.jpg",
+        "timestamp": "2026-02-19T11:19:58.338028",
+        "title": "DtMF",
+        "url": "https://music.apple.com/us/album/dtmf/1787022393?i=1787023936"
+      },
+      {
+        "album": "Unknown",
+        "artist": "Ella Langley",
+        "duration_seconds": null,
+        "explicit": false,
+        "genre": "Country",
+        "growth_rate": 0.0,
+        "plays": 0,
+        "rank": 2,
+        "song_id": "1844932150",
+        "thumbnail": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/e2/91/4d/e2914d0a-7f1d-f04c-fbf4-c50b38548838/196873638690.jpg/100x100bb.jpg",
+        "timestamp": "2026-02-19T11:19:58.338043",
+        "title": "Choosin' Texas",
+       
+... (truncated)</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-15">
+          <div class="card-header" onclick="toggleCard(15)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Trending Multi-Country  GET /trending/?countries=US,GB,IN</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/trending/</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-ok">433ms</span>
+              <span class="chevron" id="chev-15">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-15" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Returns multiple countries</td><td class="detail-cell">['GB', 'IN', 'US']</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "data": {
+    "countries": {
+      "GB": [
+        {
+          "album": "Unknown",
+          "artist": "Olivia Dean",
+          "duration_seconds": null,
+          "explicit": false,
+          "genre": "Pop",
+          "growth_rate": 0.0,
+          "plays": 0,
+          "rank": 1,
+          "song_id": "1817609509",
+          "thumbnail": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/08/e2/21/08e22164-7c0b-1522-818f-e0e74f62dc49/25UMGIM69703.rgb.jpg/100x100bb.jpg",
+          "timestamp": "2026-02-19T11:19:58.953691",
+          "title": "Man I Need",
+          "url": "https://music.apple.com/gb/album/man-i-need/1817609404?i=1817609509"
+        },
+        {
+          "album": "Unknown",
+          "artist": "Dave & Tems",
+          "duration_seconds": null,
+          "explicit": false,
+          "genre": "Hip-Hop/Rap",
+          "growth_rate": 0.0,
+          "plays": 0,
+          "rank": 2,
+          "song_id": "1847992612",
+          "thumbnail": "https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/99/49/24/9949241c-e52c-3018-eae8-c686013a7474/25UM1IM68216.rgb.jpg/100x100bb.jpg",
+          "timestamp": "2026-02-19T11:19:58.953704",
+          "title": "Raindance",
+        
+... (truncated)</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-16">
+          <div class="card-header" onclick="toggleCard(16)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Trending Invalid Country  (expects 400)</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/trending/</span>
+              
+              <span class="response-time speed-ok">341ms</span>
+              <span class="chevron" id="chev-16">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-16" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 400</td><td class="detail-cell">Got 400</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Returns error with valid_countries hint</td><td class="detail-cell"></td></tr></tbody></table>
+            <pre class="json-preview">{
+  "error": {
+    "message": "Invalid country code: XX",
+    "timestamp": "2026-02-19T11:25:39.147310+00:00",
+    "valid_countries": [
+      "us",
+      "gb",
+      "in",
+      "br",
+      "jp",
+      "de",
+      "fr",
+      "ca",
+      "au",
+      "mx"
+    ]
+  },
+  "status": "error"
+}</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-17">
+          <div class="card-header" onclick="toggleCard(17)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Analytics Top Queries  GET /analytics/top-queries/</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/analytics/top-queries/</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-ok">377ms</span>
+              <span class="chevron" id="chev-17">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-17" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">status == success</td><td class="detail-cell">success</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">top_queries list present</td><td class="detail-cell">3 queries</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "data": {
+    "scope": "global",
+    "time_window": "all_time",
+    "timestamp": "2026-02-19T11:25:39.524700+00:00",
+    "top_queries": [
+      {
+        "count": 20,
+        "query": "talwiinder - nasha"
+      },
+      {
+        "count": 9,
+        "query": "karan aujla - softly"
+      },
+      {
+        "count": 2,
+        "query": "adele - hello"
+      }
+    ],
+    "total_unique": 3
+  },
+  "status": "success"
+}</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-18">
+          <div class="card-header" onclick="toggleCard(18)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Analytics Top Queries by Country  ?country=US</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/analytics/top-queries/</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-ok">343ms</span>
+              <span class="chevron" id="chev-18">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-18" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">status == success</td><td class="detail-cell">success</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">scope includes country</td><td class="detail-cell">country_US</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "data": {
+    "scope": "country_US",
+    "time_window": "all_time",
+    "timestamp": "2026-02-19T11:25:39.867294+00:00",
+    "top_queries": [
+      {
+        "count": 20,
+        "query": "talwiinder - nasha"
+      },
+      {
+        "count": 9,
+        "query": "karan aujla - softly"
+      },
+      {
+        "count": 2,
+        "query": "adele - hello"
+      }
+    ],
+    "total_unique": 3
+  },
+  "status": "success"
+}</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-19">
+          <div class="card-header" onclick="toggleCard(19)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Analytics Trending by Country  GET /analytics/trending-by-country/</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/analytics/trending-by-country/</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-ok">374ms</span>
+              <span class="chevron" id="chev-19">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-19" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">countries dict present</td><td class="detail-cell">['US']</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "data": {
+    "countries": {
+      "US": [
+        {
+          "count": 20,
+          "query": "talwiinder - nasha"
+        },
+        {
+          "count": 9,
+          "query": "karan aujla - softly"
+        },
+        {
+          "count": 2,
+          "query": "adele - hello"
+        }
+      ]
+    },
+    "timestamp": "2026-02-19T11:25:40.243574+00:00",
+    "total_countries": 1
+  },
+  "status": "success"
+}</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-20">
+          <div class="card-header" onclick="toggleCard(20)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Analytics Trending vs Queries  ?country=US</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/analytics/trending-vs-queries/</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-ok">353ms</span>
+              <span class="chevron" id="chev-20">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-20" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">trending_songs present</td><td class="detail-cell">5 songs</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">top_user_queries present</td><td class="detail-cell"></td></tr></tbody></table>
+            <pre class="json-preview">{
+  "data": {
+    "country": "US",
+    "top_user_queries": [
+      {
+        "count": 20,
+        "query": "talwiinder - nasha"
+      },
+      {
+        "count": 9,
+        "query": "karan aujla - softly"
+      },
+      {
+        "count": 2,
+        "query": "adele - hello"
+      }
+    ],
+    "trending_songs": [
+      {
+        "album": "Unknown",
+        "artist": "Bad Bunny",
+        "duration_seconds": null,
+        "explicit": false,
+        "genre": "Latin",
+        "growth_rate": 0.0,
+        "plays": 0,
+        "rank": 1,
+        "song_id": "1787023936",
+        "thumbnail": "https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/90/5e/7e/905e7ed5-a8fa-a8f3-cd06-0028fdf3afaa/199066342442.jpg/100x100bb.jpg",
+        "timestamp": "2026-02-19T11:19:58.338028",
+        "title": "DtMF",
+        "url": "https://music.apple.com/us/album/dtmf/1787022393?i=1787023936"
+      },
+      {
+        "album": "Unknown",
+        "artist": "Ella Langley",
+        "duration_seconds": null,
+        "explicit": false,
+        "genre": "Country",
+        "growth_rate": 0.0,
+        "plays": 0,
+        "rank": 2,
+        "song_id": "1844932150",
+        "thumbnail": "https://is1-ssl.mzstatic.com/imag
+... (truncated)</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-21">
+          <div class="card-header" onclick="toggleCard(21)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Analytics Trending Intersection  ?country=US</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/analytics/trending-intersection/</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-ok">327ms</span>
+              <span class="chevron" id="chev-21">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-21" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">status == success</td><td class="detail-cell">success</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">matches list present</td><td class="detail-cell">0 matches</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "data": {
+    "country": "US",
+    "matches": [],
+    "timestamp": "2026-02-19T11:25:40.945404+00:00",
+    "total_matches": 0
+  },
+  "status": "success"
+}</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-22">
+          <div class="card-header" onclick="toggleCard(22)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">JioSaavn Search  GET /api/jiosaavn/search?q=Kesariya</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/api/jiosaavn/search</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-ok">1577ms</span>
+              <span class="chevron" id="chev-22">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-22" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">status == success</td><td class="detail-cell">success</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">results list present</td><td class="detail-cell">5 results</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Has results</td><td class="detail-cell">5 songs</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Song has title</td><td class="detail-cell">Kesariya</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Song has perma_url</td><td class="detail-cell">https://www.jiosaavn.com/song/kesariya/AgIAQyBeWlI</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "results": [
+    {
+      "artist": "Pritam, Arijit Singh, Amitabh Bhattacharya",
+      "duration": 268,
+      "id": "rjkrTnma",
+      "perma_url": "https://www.jiosaavn.com/song/kesariya/AgIAQyBeWlI",
+      "thumbnail": "https://c.saavncdn.com/871/Brahmastra-Original-Motion-Picture-Soundtrack-Hindi-2022-20221006155213-500x500.jpg",
+      "title": "Kesariya",
+      "type": "song"
+    },
+    {
+      "artist": "Pritam, Shashwat Singh, Antara Mitra, Arijit Singh",
+      "duration": 197,
+      "id": "p-IVNEqy",
+      "perma_url": "https://www.jiosaavn.com/song/kesariya-dance-mix/AEUiZzp1Rko",
+      "thumbnail": "https://c.saavncdn.com/871/Brahmastra-Original-Motion-Picture-Soundtrack-Hindi-2022-20221006155213-500x500.jpg",
+      "title": "Kesariya (Dance Mix)",
+      "type": "song"
+    },
+    {
+      "artist": "VIBIE, Arijit Singh, Pritam, Bollywood Lofi",
+      "duration": 240,
+      "id": "7I9urT8B",
+      "perma_url": "https://www.jiosaavn.com/song/kesariya-lofi-flip/RyFSRAZkD3E",
+      "thumbnail": "https://c.saavncdn.com/611/Kesariya-Lofi-Flip-Hindi-2022-20221004184611-500x500.jpg",
+      "title": "Kesariya (Lofi Flip)",
+      "type": "song"
+    },
+    {
+      "artist": "Mirsha
+... (truncated)</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-23">
+          <div class="card-header" onclick="toggleCard(23)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">JioSaavn Search Missing Query  (expects 400)</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/api/jiosaavn/search</span>
+              
+              <span class="response-time speed-ok">482ms</span>
+              <span class="chevron" id="chev-23">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-23" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 400</td><td class="detail-cell">Got 400</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "error": {
+    "message": "Query parameter 'q' is required",
+    "timestamp": "2026-02-19T11:25:42.852557+00:00"
+  },
+  "status": "error"
+}</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-24">
+          <div class="card-header" onclick="toggleCard(24)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">JioSaavn Play  GET /api/jiosaavn/play</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/api/jiosaavn/play</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-ok">1561ms</span>
+              <span class="chevron" id="chev-24">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-24" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">status == success</td><td class="detail-cell">success</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">stream_url present</td><td class="detail-cell">https://aac.saavncdn.com/871/c2febd353f3a076a406fa37510f31f9f_320.mp4</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">title present</td><td class="detail-cell">Kesariya</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "data": {
+    "artist": "Pritam, Arijit Singh, Amitabh Bhattacharya",
+    "duration": 268,
+    "stream_url": "https://aac.saavncdn.com/871/c2febd353f3a076a406fa37510f31f9f_320.mp4",
+    "thumbnail": "https://c.saavncdn.com/871/Brahmastra-Original-Motion-Picture-Soundtrack-Hindi-2022-20221006155213-500x500.jpg",
+    "title": "Kesariya"
+  },
+  "status": "success"
+}</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-25">
+          <div class="card-header" onclick="toggleCard(25)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">JioSaavn Play Missing Param  (expects 400)</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/api/jiosaavn/play</span>
+              
+              <span class="response-time speed-ok">371ms</span>
+              <span class="chevron" id="chev-25">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-25" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 400</td><td class="detail-cell">Got 400</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "error": {
+    "message": "songLink parameter is required",
+    "timestamp": "2026-02-19T11:25:46.401723+00:00"
+  },
+  "status": "error"
+}</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-26">
+          <div class="card-header" onclick="toggleCard(26)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Cache Stats  GET /cache/stats</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/cache/stats</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-ok">350ms</span>
+              <span class="chevron" id="chev-26">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-26" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">status == success</td><td class="detail-cell">success</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">cache_files count present</td><td class="detail-cell">13 files</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">ttl_seconds present</td><td class="detail-cell">86400s</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "cache_dir": "/opt/render/project/src/cache_data",
+  "cache_files": 13,
+  "files": [
+    "3e3da8069c4096cce39368e08ea40a351e61e993b8b6aeda935158de62ccf4f8.json",
+    "3a3f2b7f796ae556009a40b82a308af7518b36778d47e6d904b4e636a44584b0.json",
+    "48d0733dfb0eb134609032c5bc21c1164f652d6a08692d65efce4f346f182f94.json",
+    "fe3a69518506a341c58e67b3cf1c2498958eecdd589f7e67eb579404524227d6.json",
+    "75ef073b82533a7915a4b1d234990ce46b4298b18f7117e2063c59a504277542.json",
+    "0a8360690494d9c3f9faa21b2451d89aa83f3713ab53d13637958f94d97b86e9.json",
+    "89bad614505097bd3de9fdca34a4ed717eedc07855ddeae9a0bbaa1e2a1ddb6d.json",
+    "1357ec6938dd81632bc7d7b7adadb6199fd1e91069ceb1655fae57dc10de3536.json",
+    "898294ac75111f635df73e9da66791d21bd23a4671c91bc197869211ec6f4f4a.json",
+    "f32b39101e6f9a873522cbe753125a45ca183a299017d37248e85690b1e99286.json",
+    "04ebcf5739f2f0d1c0631cfffb51a204dd9f740871dac0578f1d037db784ba3b.json",
+    "99ad3a0f631dce72530c3b3776a2a0387fb21eb7c3fe0444797c014f6de879e9.json",
+    "cc9b7e6dbd1a0b1e7029a676ad9580432ef39d1f36af9a8edae94d57763ae77d.json"
+  ],
+  "status": "success",
+  "ttl_seconds": 86400,
+  "version": "v2"
+}</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-27">
+          <div class="card-header" onclick="toggleCard(27)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Admin Cache Stats  GET /admin/cache/stats</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/admin/cache/stats</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-ok">350ms</span>
+              <span class="chevron" id="chev-27">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-27" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Has files list</td><td class="detail-cell"></td></tr></tbody></table>
+            <pre class="json-preview">{
+  "cache_dir": "/opt/render/project/src/cache_data",
+  "cache_files": 13,
+  "files": [
+    "3e3da8069c4096cce39368e08ea40a351e61e993b8b6aeda935158de62ccf4f8.json",
+    "3a3f2b7f796ae556009a40b82a308af7518b36778d47e6d904b4e636a44584b0.json",
+    "48d0733dfb0eb134609032c5bc21c1164f652d6a08692d65efce4f346f182f94.json",
+    "fe3a69518506a341c58e67b3cf1c2498958eecdd589f7e67eb579404524227d6.json",
+    "75ef073b82533a7915a4b1d234990ce46b4298b18f7117e2063c59a504277542.json",
+    "0a8360690494d9c3f9faa21b2451d89aa83f3713ab53d13637958f94d97b86e9.json",
+    "89bad614505097bd3de9fdca34a4ed717eedc07855ddeae9a0bbaa1e2a1ddb6d.json",
+    "1357ec6938dd81632bc7d7b7adadb6199fd1e91069ceb1655fae57dc10de3536.json",
+    "898294ac75111f635df73e9da66791d21bd23a4671c91bc197869211ec6f4f4a.json",
+    "f32b39101e6f9a873522cbe753125a45ca183a299017d37248e85690b1e99286.json",
+    "04ebcf5739f2f0d1c0631cfffb51a204dd9f740871dac0578f1d037db784ba3b.json",
+    "99ad3a0f631dce72530c3b3776a2a0387fb21eb7c3fe0444797c014f6de879e9.json",
+    "cc9b7e6dbd1a0b1e7029a676ad9580432ef39d1f36af9a8edae94d57763ae77d.json"
+  ],
+  "ttl_seconds": 86400,
+  "version": "v2"
+}</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-28">
+          <div class="card-header" onclick="toggleCard(28)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#8e44ad">POST</span>
+              <span class="test-name">Cache Clear Unauthorized  POST /cache/clear (expects 403)</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/cache/clear</span>
+              
+              <span class="response-time speed-ok">379ms</span>
+              <span class="chevron" id="chev-28">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-28" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Rejected without key (HTTP 403)</td><td class="detail-cell">Got 403 — should be 403</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "error": {
+    "message": "Unauthorized"
+  },
+  "status": "error"
+}</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-29">
+          <div class="card-header" onclick="toggleCard(29)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Admin Route Wrong Key  GET /admin/cache/stats?key=WRONG (expects 403)</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/admin/cache/stats</span>
+              
+              <span class="response-time speed-ok">350ms</span>
+              <span class="chevron" id="chev-29">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-29" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Rejected with wrong key (HTTP 403)</td><td class="detail-cell">Got 403</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "error": "unauthorized"
+}</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-30">
+          <div class="card-header" onclick="toggleCard(30)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Rate Limit Headers  present on /lyrics/ response</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/lyrics/</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-ok">344ms</span>
+              <span class="chevron" id="chev-30">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-30" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Rate-limit headers present</td><td class="detail-cell">{'x-ratelimit-limit': '15', 'x-ratelimit-remaining': '12', 'x-ratelimit-reset': '1771500397'}</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "data": {
+    "artist": "karan aujla",
+    "hasTimestamps": false,
+    "lyrics": "ਗੱਲ ਸੁਣ ਲ ਲਲਾਰੀਆਂ ਵੇ\nਆ ਲੋਕ ਮੇਰੇ ਤੇ ਹਸਦੇ\nਪੈਸੇ ਜ਼ਿਆਦਾ ਦੇ ਦੂੰਗੀ\nMatching ਕਰਦੇਗ਼ਾਂ ਤਾਂ ਦੱਸਦੇ\nਸੁਣ ਲਾ ਵੇ ditto same ਚਾਹੀਦੀ\nਆ ਲੇ ਫੋਟੋ ਵੇ Ferrari ਲਾਲ ਦੀ\nਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ\nਵੇ ਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\nਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ ਵੇ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\n\nਓਹਦਾ ਪੰਗੇ ਲੱਗਦੇ ਆ\nਓਹਨੂ ਚਂਗੇ ਲਗਦੇ ਆ\nਤਾਂ ਹੀ ਸੋਚਾ ਕੁੰਡਲ’ਆਂ ਪਵਾ ਲਵਾ\nਸੋਚਾ ਸ਼ਰੇਆਮ ਹੋਜਾ\nਸੋਚਦੀ ਆ ਨਾਮ ਓਹਦਾ\nਗੁੱਟ ਉੱਤੇ tattoo ਬਣਵਾ ਲਵਾਂ\nਸੋਚਦੀ ਫੇਰ ਟਾਲਦੀ ਮੈਂ\nPhantom ਦੇ ਨਾਲ ਦੀ ਮੈਂ\nਇੱਕ ਹੋਰ ਕੂੜ੍ਤੀ ਸਵਾ ਲਵਾਂ\nਓਹਨੂ ਦੇਖ ਕੇ ਤਾਂ ਮੇਰੀ ਹੋ ਜਾਵੇ\nਉਮਰ ਵਧੀ ਦੇ ਨਾਲ ਦੀ\nਵੇ ਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\nਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ ਵੇ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\n\nਮੇਰੇ ਲਯੀ ਵੇਖਦੇ ਜਿਹ ਕੁੜੀਆਂ ਕਵਾਰੀਆ  ਨੇ\nਦੇਖੀ ਵੇ ਦੁਪੱਟੇ ਤੇਰੇ ਵਿਕਦੇ\nਐਂਨੀ ਸੋਹਣੀ ਚੁੰਨੀ ਲੱਗੇ ਜੱਟੀ ਤੇ ਲਯੀ ਕੇ\nਮੈਨੂ ਜਦੋਂ ਓਹੋ ਦੇਖੇ ਗਾਣਾ ਲਿਖਦੇ\nਕੱਮ ਮੈਨੂ ਬੱਡੇ ਸੁਨਿਅਰੇ ਕੋਲੋ ਕੜੇ\nਨਾਲੇ ਹਾਲੇ ਮੈਂ ਸੇਫੋੜਾ ਗੇੜਾ ਮਾਰਨਾ\nਔਂਦਾ ਐ ਪ੍ਯਾਰ ਓਹਦਾ, ਹੋਣਾ ਏ ਦੀਦਾਰ ਓਹਦਾ\nਚੱਜ ਨਾਲ ਹੋਯੀ ਮੈਂ ਤਿਆਰ ਨਾ\nਡਰ ਲਗਦਾ ਨਾ ਕਿੱਤੇ ਰਿਹ ਜਾਵਾ\nਸੱਦੀ ਨਾ ਸਡੀ ਦੇ ਨਾਲ ਦੀ\nਵੇ ਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\nਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲਲਾਰੀਆਂ ਵੇ\nਮੇਰੇ ਯਾਰ ਦੀ ਗੱਡੀ ਦੇ ਨਾਲ ਦੀ\nਵੇ ਚੁੰਨੀ ਮੇਰੀ ਰੰਗ ਦੇ ਲ
+... (truncated)</pre>
+          </div>
+        </div>
+        <div class="test-card card-pass" id="test-31">
+          <div class="card-header" onclick="toggleCard(31)">
+            <div class="card-left">
+              <span class="badge" style="background:#27ae60">✓ PASS</span>
+              <span class="method-pill" style="background:#2980b9">GET</span>
+              <span class="test-name">Gzip Compression  Content-Encoding: gzip on responses</span>
+            </div>
+            <div class="card-right">
+              <span class="endpoint-label">/</span>
+              <span class="status-code">200</span>
+              <span class="response-time speed-ok">440ms</span>
+              <span class="chevron" id="chev-31">▼</span>
+            </div>
+          </div>
+          <div class="card-body" id="body-31" style="display:none">
+            
+            <table class="checks-table"><tbody><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">HTTP 200</td><td class="detail-cell">Got 200</td></tr><tr class="check-row"><td style="color:#27ae60;font-weight:700;width:28px">✓</td><td style="color:#27ae60">Gzip compression active</td><td class="detail-cell">Content-Encoding: gzip</td></tr></tbody></table>
+            <pre class="json-preview">{
+  "api": "Lyrica",
+  "description": "A comprehensive lyrics API with mood analysis, metadata extraction, and trending insights",
+  "endpoints": {
+    "cache_stats": {
+      "description": "Get cache statistics",
+      "method": "GET",
+      "url": "/cache/stats"
+    },
+    "jiosaavn_play": {
+      "description": "Get playable stream URL from JioSaavn",
+      "examples": [
+        "/api/jiosaavn/play?songLink=<song_link>"
+      ],
+      "method": "GET",
+      "url": "/api/jiosaavn/play"
+    },
+    "jiosaavn_search": {
+      "description": "Search for songs on JioSaavn",
+      "examples": [
+        "/api/jiosaavn/search?q=Imagine"
+      ],
+      "method": "GET",
+      "url": "/api/jiosaavn/search"
+    },
+    "lyrics": {
+      "description": "Fetch lyrics for a song",
+      "examples": [
+        "/lyrics/?artist=The Beatles&song=Imagine",
+        "/lyrics/?artist=The Beatles&song=Imagine&timestamps=true",
+        "/lyrics/?artist=The Beatles&song=Imagine&mood=true",
+        "/lyrics/?artist=The Beatles&song=Imagine&metadata=true",
+        "/lyrics/?artist=The Beatles&song=Imagine&fast=true&timestamps=true&mood=true&metadata=true"
+      ],
+      "method": "GET",
+      "url": "/lyrics
+... (truncated)</pre>
+          </div>
+        </div>
+</div>
+
+<div class="footer">
+  Lyrica API Debug Report &nbsp;·&nbsp; 2026-02-19 11:25:48 UTC &nbsp;·&nbsp; 32 tests &nbsp;·&nbsp;
+  <strong style="color:#27ae60">93% healthy</strong>
+</div>
+
+<script>
+  function toggleCard(i) {
+    const body = document.getElementById('body-' + i);
+    const chev = document.getElementById('chev-' + i);
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : 'block';
+    chev.style.transform = open ? '' : 'rotate(180deg)';
+  }
+  function expandAll() {
+    document.querySelectorAll('.card-body').forEach((b,i) => {
+      b.style.display = 'block';
+      const c = document.getElementById('chev-' + i);
+      if(c) c.style.transform = 'rotate(180deg)';
+    });
+  }
+  function collapseAll() {
+    document.querySelectorAll('.card-body').forEach((b,i) => {
+      b.style.display = 'none';
+      const c = document.getElementById('chev-' + i);
+      if(c) c.style.transform = '';
+    });
+  }
+  let currentFilter = 'ALL';
+  function filterCards(f) {
+    currentFilter = f;
+    document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
+    document.getElementById('f-' + f).classList.add('active');
+    applyFilters();
+  }
+  function searchCards(q) { applyFilters(q); }
+  function applyFilters(q) {
+    q = (q || document.getElementById('searchInput').value || '').toLowerCase();
+    document.querySelectorAll('.test-card').forEach(card => {
+      const text = card.innerText.toLowerCase();
+      const matchSearch = !q || text.includes(q);
+      const classMap = {'PASS':'card-pass','FAIL':'card-fail','WARN':'card-warn','SKIP':'card-skip'};
+      const matchFilter = currentFilter === 'ALL' || card.classList.contains(classMap[currentFilter]);
+      card.style.display = (matchSearch && matchFilter) ? '' : 'none';
+    });
+  }
+  // Auto-expand failed tests
+  document.querySelectorAll('.card-fail').forEach(card => {
+    const id = card.id.replace('test-', '');
+    const body = document.getElementById('body-' + id);
+    const chev = document.getElementById('chev-' + id);
+    if(body) body.style.display = 'block';
+    if(chev) chev.style.transform = 'rotate(180deg)';
+  });
+</script>
+</body>
+</html>
