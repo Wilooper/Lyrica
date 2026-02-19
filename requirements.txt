@@ -1,14 +1,57 @@
-Flask>=2.0
-flask-cors
-python-dotenv
-requests
-beautifulsoup4
-lyricsgenius
-ytmusicapi
-gunicorn
-Flask-Limiter
-flask[async]==3.0.0
-Werkzeug==3.0.1
-yt-dlp
-nest_asyncio
-textblob
+# ============================================================
+# Lyrica API — Python Dependencies
+# Last updated: 2026-02-19
+# Python version: 3.11+
+# ============================================================
+
+# ── Web framework ────────────────────────────────────────────
+flask[async]==3.0.3          # async view support (required for async def routes)
+Werkzeug==3.0.3              # pinned to match Flask 3.0.x
+flask-cors==4.0.1            # CORS headers
+
+# ── HTTP server (production) ─────────────────────────────────
+gunicorn==22.0.0             # WSGI production server for Render
+                             # Start cmd: gunicorn -c gunicorn.conf.py run:app
+
+# ── Async HTTP client (replaces requests in all fetchers) ────
+httpx==0.27.0                # async HTTP with connection pooling
+
+# ── Retry logic ──────────────────────────────────────────────
+tenacity==8.3.0              # exponential backoff in fetch_controller + fetchers
+
+# ── Response compression ─────────────────────────────────────
+flask-compress==1.15         # gzip all API responses (60-80% size reduction)
+
+# ── Rate limiting ────────────────────────────────────────────
+Flask-Limiter==3.7.0         # per-IP rate limiting
+limits==3.12.0               # backend for Flask-Limiter
+
+# ── Environment / config ─────────────────────────────────────
+python-dotenv==1.0.1         # load .env in development
+
+# ── Lyrics sources ───────────────────────────────────────────
+lyricsgenius==3.0.1          # Genius API (requires GENIUS_TOKEN env var)
+ytmusicapi==1.7.4            # YouTube Music (no auth required)
+yt-dlp==2024.5.27            # YouTube fallback / audio info
+beautifulsoup4==4.12.3       # HTML scraping (LyricsFreek, Last.fm)
+lxml==5.2.2                  # faster BS4 parser
+
+# ── NLP / sentiment ──────────────────────────────────────────
+textblob==0.18.0             # sentiment analysis on lyrics
+
+# ── Async helpers ────────────────────────────────────────────
+nest_asyncio==1.6.0          # allows nested event loops (Flask sync→async bridge)
+anyio==4.4.0                 # async compatibility layer used by httpx
+
+# ── XML parsing ──────────────────────────────────────────────
+# xml.etree.ElementTree is stdlib — no extra package needed
+
+# ── HTTP (kept for metadata_extractor — sync parallel via ThreadPoolExecutor) ─
+requests==2.32.3
+
+# ── Optional: Redis backend for Flask-Limiter (recommended for production) ───
+# redis==5.0.6
+# hiredis==2.3.2             # C parser for redis — much faster
+
+# ── Optional: gevent worker for gunicorn (higher concurrency) ────────────────
+# gevent==24.2.1
