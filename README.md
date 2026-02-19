@@ -8,7 +8,7 @@ A powerful, open-source RESTful API for retrieving song lyrics with advanced fea
 - This is flask version if you want fast api version then visit:-
   
 https://github.com/Wilooper/LyricaV2.git
-- The translation engine is no longer accessible sorry for that but i am working on it.
+
 ## ✨ Key Features
 
 - **Multi-Source Lyrics Retrieval** - Aggregates from 6 premium sources with intelligent fallback
