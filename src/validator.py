@@ -3,29 +3,31 @@ Lyrica API — Lyrics Validator
 ==============================
 Validates that a fetcher result actually matches what was requested.
 
-Key design decisions
---------------------
-* Non-Latin script awareness  — Punjabi (Gurmukhi), Hindi (Devanagari), Arabic,
-  Korean, Japanese, Chinese, Cyrillic all contain zero Latin characters.
-  When the returned metadata is in a different script than the request, we
-  CANNOT compare them with SequenceMatcher (ratio will always be ~0.0).
-  In that case we trust the fetcher and skip the similarity gate.
+Core principle
+--------------
+The validator should REJECT obviously wrong results (searching "Nasha" and
+getting "Shape of You") while ACCEPTING correct results that have messy
+metadata (Punjabi stored in Gurmukhi script, duplicate artist names, feat.
+annotations, romanisation variants, etc.)
 
-* Transliteration tolerance   — "Talwiinder" vs "talwiinder" after normalize,
-  same person. We accept results where the song title matches AND the result
-  came from a source that found it via the given query.
+Architecture
+------------
+1. Script-mismatch bypass  — If request is Latin but result is Gurmukhi/
+   Devanagari/Arabic/Korean etc., SequenceMatcher is meaningless (score=0).
+   Trust the fetcher and skip similarity entirely.
 
-* Short song / artist names   — "Nasha" has only 5 chars. A 0.75 threshold
-  on a 5-char string means any single char difference fails. Lower bound is
-  applied for short strings automatically.
+2. Length-penalised similarity — Standard SequenceMatcher over-scores when
+   a short query matches a longer title ("Hello" vs "Hello Goodbye" = 0.56).
+   We penalise when returned string is >1.5x longer.
 
-* Multiple artist strings      — "Talwiinder & Vision", "Adele, Adele",
-  "Dave & Tems" — we split and deduplicate before comparing.
+3. Adaptive threshold — Short names like "Nasha" (5 chars) get a lower
+   threshold than long ones like "Bohemian Rhapsody".
 
-* Graceful fallback            — if we cannot confirm a match, we accept the
-  result rather than throwing a false-negative. The validator's job is to
-  REJECT obviously wrong songs (searching "Nasha" and getting "Shape of You"),
-  not to be a pixel-perfect identity check.
+4. Artist check — 5 methods (direct sim / substring / feat-in-title /
+   reversed-collab / extension-collab). Extension-collab only fires when the
+   returned title has a recognised extension suffix (feat./remix/etc.) AND
+   the extension keyword itself is the reason the artist name differs — i.e.,
+   the requested title is the base of the returned title, not just a substring.
 """
 
 from difflib import SequenceMatcher
@@ -35,14 +37,23 @@ from src.logger import get_logger
 
 logger = get_logger("validator")
 
-
 # ─────────────────────────────────────────────────────────────────────────────
-# Script detection
+# Constants
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Regex that matches known title extension suffixes
+# Match extension keywords that follow a song title (after normalize strips punctuation/parens)
+_EXTENSION_RE = re.compile(
+    r'^(?:feat(?:uring|\.?)?|ft\.?|remix|live|acoustic|cover|'
+    r'version|edit|radio|official|remastered?|bonus|alt\.?|instrumental|'
+    r'extended|deluxe|explicit|clean)\b',
+    re.IGNORECASE,
+)
+
+# Unicode ranges for non-Latin scripts
 _NON_LATIN_RANGES = [
     (0x0600, 0x06FF),   # Arabic
-    (0x0900, 0x097F),   # Devanagari (Hindi, Marathi, Sanskrit)
+    (0x0900, 0x097F),   # Devanagari (Hindi)
     (0x0A00, 0x0A7F),   # Gurmukhi (Punjabi)
     (0x0A80, 0x0AFF),   # Gujarati
     (0x0B00, 0x0B7F),   # Oriya
@@ -53,43 +64,30 @@ _NON_LATIN_RANGES = [
     (0x0E00, 0x0E7F),   # Thai
     (0x0F00, 0x0FFF),   # Tibetan
     (0x1100, 0x11FF),   # Hangul Jamo (Korean)
-    (0x3000, 0x9FFF),   # CJK unified (Chinese/Japanese/Korean)
-    (0xAC00, 0xD7AF),   # Hangul Syllables (Korean)
+    (0x3000, 0x9FFF),   # CJK (Chinese/Japanese/Korean)
+    (0xAC00, 0xD7AF),   # Hangul Syllables
     (0x0400, 0x04FF),   # Cyrillic
     (0x0370, 0x03FF),   # Greek
     (0x0590, 0x05FF),   # Hebrew
 ]
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
 
-def _has_non_latin_script(text: str) -> bool:
-    """True if >20% of characters in text belong to a non-Latin script."""
+def _has_non_latin(text: str) -> bool:
+    """True if >20% of chars are from a non-Latin script."""
     if not text:
         return False
-    non_latin = sum(
-        1 for ch in text
-        if any(lo <= ord(ch) <= hi for lo, hi in _NON_LATIN_RANGES)
-    )
-    return non_latin > max(1, len(text) * 0.2)
+    count = sum(1 for c in text if any(lo <= ord(c) <= hi for lo, hi in _NON_LATIN_RANGES))
+    return count > max(1, len(text) * 0.2)
 
-
-def _scripts_compatible(s1: str, s2: str) -> bool:
-    """True if both strings use the same script family (both Latin or both non-Latin)."""
-    return _has_non_latin_script(s1) == _has_non_latin_script(s2)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# String normalisation
-# ─────────────────────────────────────────────────────────────────────────────
 
 def normalize_string(text: str) -> str:
-    """
-    NFC-normalise, strip punctuation, collapse whitespace, lowercase.
-    Preserves non-Latin Unicode letters so Punjabi/Hindi/etc. are intact.
-    """
+    """NFC-normalize, strip punctuation, collapse whitespace, lowercase."""
     if not text:
         return ""
     text = unicodedata.normalize("NFC", text)
-    # Remove everything except word chars (unicode-aware) and spaces
     text = re.sub(r"[^\w\s]", "", text, flags=re.UNICODE)
     text = re.sub(r"\s+", " ", text)
     return text.lower().strip()
@@ -97,76 +95,86 @@ def normalize_string(text: str) -> str:
 
 def split_artists(artist_str: str) -> list:
     """
-    Split a multi-artist string → list of deduplicated normalised names.
-    Handles feat./ft./featuring/&/and/,/;// separators.
-    "Adele, Adele"        → ["adele"]
-    "Talwiinder & Vision" → ["talwiinder", "vision"]
+    Split multi-artist string into deduplicated normalised names.
+    'Adele, Adele' → ['adele']
+    'Talwiinder & Vision' → ['talwiinder', 'vision']
     """
     if not artist_str:
         return []
-    artist_str = re.sub(r'\s*(feat\.|ft\.|featuring|with|&|and)\s*', ', ', artist_str, flags=re.I)
+    s = re.sub(r'\s*(feat\.|ft\.|featuring|with|&|and)\s*', ', ', artist_str, flags=re.I)
     seen, result = set(), []
-    for part in re.split(r'\s*[,;/]\s*', artist_str):
-        norm = normalize_string(part)
-        if norm and norm not in seen:
-            seen.add(norm)
-            result.append(norm)
+    for part in re.split(r'\s*[,;/]\s*', s):
+        n = normalize_string(part)
+        if n and n not in seen:
+            seen.add(n)
+            result.append(n)
     return result
 
 
 def extract_artist_song_from_result(result: dict) -> tuple:
-    """Return (list_of_artist_names, song_title_normalised) from a fetcher result dict."""
-    artist = (
-        result.get("artist") or result.get("artists") or
-        result.get("artist_name") or result.get("trackArtist")
-    )
-    song = (
-        result.get("song") or result.get("song_title") or
-        result.get("title") or result.get("name") or result.get("trackName")
-    )
+    """Return (list[str], str) — normalised artist names and song title."""
+    artist = (result.get("artist") or result.get("artists") or
+              result.get("artist_name") or result.get("trackArtist"))
+    song = (result.get("song") or result.get("song_title") or
+            result.get("title") or result.get("name") or result.get("trackName"))
 
     if isinstance(artist, list):
-        seen, returned_artists = set(), []
+        seen, artists = set(), []
         for a in artist:
             n = normalize_string(str(a))
             if n and n not in seen:
-                seen.add(n)
-                returned_artists.append(n)
+                seen.add(n); artists.append(n)
     elif isinstance(artist, str):
-        returned_artists = split_artists(artist)
+        artists = split_artists(artist)
     else:
-        returned_artists = []
+        artists = []
 
-    return returned_artists, normalize_string(str(song or ""))
+    return artists, normalize_string(str(song or ""))
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Similarity helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
-def get_similarity_ratio(str1: str, str2: str) -> float:
-    s1 = normalize_string(str1)
-    s2 = normalize_string(str2)
-    if not s1 or not s2:
+def get_similarity_ratio(s1: str, s2: str) -> float:
+    """
+    Length-penalised similarity.
+    When the returned string is >1.5× longer than requested, we penalise the
+    score to prevent short queries over-matching long titles.
+    e.g. 'hello' vs 'hello goodbye': raw=0.56 → penalised=0.38  (below threshold)
+    e.g. 'hello' vs 'hello':          raw=1.00 → no penalty=1.00 ✓
+    """
+    a = normalize_string(s1)
+    b = normalize_string(s2)
+    if not a or not b:
         return 0.0
-    return SequenceMatcher(None, s1, s2).ratio()
+    sim = SequenceMatcher(None, a, b).ratio()
+    if len(b) > len(a) * 1.5:
+        sim *= (0.5 + 0.5 * (len(a) / len(b)))
+    return sim
 
 
 def _adaptive_threshold(text: str, base: float) -> float:
-    """
-    Scale threshold down for short strings to avoid unfair rejections.
-    "Nasha" (5 chars) → threshold drops to ~0.50
-    "Hello" (5 chars) → same
-    "Bohemian Rhapsody" (17 chars) → full threshold
-    """
-    length = len(normalize_string(text))
-    if length <= 4:
-        return max(0.40, base - 0.35)
-    if length <= 6:
-        return max(0.50, base - 0.20)
-    if length <= 10:
-        return max(0.60, base - 0.10)
+    """Lower threshold for short strings to avoid unfair rejections."""
+    n = len(normalize_string(text))
+    if n <= 4:  return max(0.40, base - 0.35)
+    if n <= 6:  return max(0.50, base - 0.20)
+    if n <= 10: return max(0.60, base - 0.10)
     return base
+
+
+def _is_extension_suffix(returned: str, requested: str) -> bool:
+    """
+    True if `returned` title is `requested` title + a recognised extension.
+    e.g. 'rockstar feat 21 savage' starts with 'rockstar' and then has a feat.
+    This is strict: requested must be a prefix (with possible whitespace/paren).
+    """
+    req = normalize_string(requested)
+    ret = normalize_string(returned)
+    if not ret.startswith(req):
+        return False
+    suffix = ret[len(req):].strip()
+    # Empty suffix = exact match (not an "extension")
+    if not suffix:
+        return False
+    # Match known extension keywords
+    return bool(_EXTENSION_RE.match(suffix))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -180,155 +188,128 @@ def validate_lyrics_match(
     threshold: float = 0.75,
 ) -> dict:
     """
-    Determine whether `result` is the song that was actually requested.
-
-    Returns dict with:
+    Returns dict:
         valid            bool
         reason           str
-        artist_match     float  (0–1)
-        song_match       float  (0–1)
+        artist_match     float (0–1)
+        song_match       float (0–1)
         returned_artists list[str]
         returned_song    str
         script_mismatch  bool
     """
-    requested_artists        = split_artists(requested_artist)
-    norm_req_song            = normalize_string(requested_song)
-    returned_artists, returned_song = extract_artist_song_from_result(result)
+    req_artists          = split_artists(requested_artist)
+    norm_req_song        = normalize_string(requested_song)
+    ret_artists, ret_song = extract_artist_song_from_result(result)
 
-    # ── 1. No song title in result → trust the fetcher ────────────────────────
-    if not returned_song:
-        logger.warning(f"No song title in result — trusting fetcher for '{requested_song}'")
-        return _accept("No metadata to compare — trusting fetcher", 1.0, 1.0,
-                       returned_artists, returned_song, False)
+    # ── Guard: no song title → trust fetcher ─────────────────────────────────
+    if not ret_song:
+        logger.warning(f"No title in result — trusting fetcher for '{requested_song}'")
+        return _ok("No title metadata — trusting fetcher", 1.0, 1.0,
+                   ret_artists, ret_song, False)
 
-    # ── 2. Cross-script detection → bypass similarity entirely ────────────────
-    #
-    # Example: user searches "Nasha" (Latin) but LRCLIB returns the song stored
-    # in Gurmukhi script as "ਨਸ਼ਾ" with artist "ਤਲਵਿੰਦਰ". SequenceMatcher
-    # will give 0.0 for "talwiinder" vs "ਤਲਵਿੰਦਰ". That is NOT a wrong result,
-    # it's simply a different encoding of the same song.
-    #
-    song_scripts_ok   = _scripts_compatible(norm_req_song,   returned_song)
-    artist_scripts_ok = True
-    if requested_artists and returned_artists:
-        artist_scripts_ok = any(
-            _scripts_compatible(req, ret)
-            for req in requested_artists
-            for ret in returned_artists
-        )
+    # ── Cross-script bypass ───────────────────────────────────────────────────
+    # Latin request vs Gurmukhi/Devanagari/Arabic/Korean result → sim=0, bypass
+    req_non_latin = _has_non_latin(norm_req_song)
+    ret_non_latin = _has_non_latin(ret_song)
+    if req_non_latin != ret_non_latin:
+        logger.info(f"✓ Cross-script: '{requested_artist}-{requested_song}' → '{ret_artists}-{ret_song}'")
+        return _ok("Cross-script match — similarity bypassed", 1.0, 1.0,
+                   ret_artists, ret_song, True)
 
-    if not song_scripts_ok or not artist_scripts_ok:
-        logger.info(
-            f"✓ Cross-script bypass: '{requested_artist} – {requested_song}' "
-            f"matched '{returned_artists} – {returned_song}' (different scripts)"
-        )
-        return _accept("Cross-script match — similarity bypassed", 1.0, 1.0,
-                       returned_artists, returned_song, True)
-
-    # ── 3. Adaptive thresholds for short names ────────────────────────────────
+    # ── Adaptive thresholds ───────────────────────────────────────────────────
     song_thresh   = _adaptive_threshold(requested_song,   threshold)
     artist_thresh = _adaptive_threshold(requested_artist, threshold)
 
-    # ── 4. Song title check ───────────────────────────────────────────────────
-    song_sim       = get_similarity_ratio(norm_req_song, returned_song)
-    # Also accept if the requested song title is a substring of the returned one
-    # e.g. "Nasha" ⊂ "Nasha (feat. XYZ)"
-    song_contained = len(norm_req_song) >= 3 and norm_req_song in returned_song
-    song_ok        = song_sim >= song_thresh or song_contained
+    # ── Song check ────────────────────────────────────────────────────────────
+    song_sim  = get_similarity_ratio(norm_req_song, ret_song)
+    # If it's a recognised extension (feat./remix/etc.), the song title IS
+    # correct by definition — the requested title is the base of the returned.
+    # Extension flag: returned title is requested title + feat./remix/etc.
+    # If True, the song IS the requested song — just with extra attribution info.
+    is_extension = _is_extension_suffix(ret_song, norm_req_song)
 
-    # ── 5. Artist check ───────────────────────────────────────────────────────
-    best_artist_score = 0.0
-    found_artist      = False
-    match_method      = "None"
-    raw_returned_str  = " ".join(returned_artists)
+    song_ok = song_sim >= song_thresh or is_extension
 
-    # If the result has no artist info, don't penalise — check song only
-    if not returned_artists:
-        found_artist = True
-        match_method = "No artist metadata — song-only match"
+    # ── Artist check ─────────────────────────────────────────────────────────
+    best_artist = 0.0
+    found       = False
+    method      = "None"
+    raw_ret_str = " ".join(ret_artists)
+
+    if not ret_artists:
+        # No artist metadata → song similarity alone decides
+        found  = True
+        method = "No artist metadata — song-only"
     else:
-        for req in requested_artists:
-            # Update best score across all pairs
-            for ret in returned_artists:
-                best_artist_score = max(best_artist_score, get_similarity_ratio(req, ret))
+        for req in req_artists:
+            for ret in ret_artists:
+                best_artist = max(best_artist, get_similarity_ratio(req, ret))
 
-            # Check A: direct similarity
-            if any(get_similarity_ratio(req, ret) >= artist_thresh for ret in returned_artists):
-                found_artist = True
-                match_method = "Direct similarity"
-                break
+            # A: direct similarity
+            if any(get_similarity_ratio(req, ret) >= artist_thresh for ret in ret_artists):
+                found  = True; method = "Direct similarity"; break
 
-            # Check B: substring in full artist string
-            if len(req) >= 3 and req in raw_returned_str:
-                found_artist = True
-                match_method = "Substring match"
-                break
+            # B: requested artist is a substring of returned artist string
+            if len(req) >= 3 and req in raw_ret_str:
+                found  = True; method = "Substring match"; break
 
-            # Check C: artist name in song title (feat. annotation)
-            if len(req) >= 3 and req in returned_song:
-                found_artist = True
-                match_method = "Featured in title"
-                break
+            # C: requested artist appears in the song title (feat. annotation)
+            if len(req) >= 3 and req in ret_song:
+                found  = True; method = "Featured in title"; break
 
-            # Check D: reversed collab — returned artist is part of requested artist string
-            # e.g. request="Post Malone", returned artist="21 Savage"
-            norm_req_artist_full = normalize_string(requested_artist)
-            if any(len(ret) >= 3 and ret in norm_req_artist_full for ret in returned_artists):
-                found_artist = True
-                match_method = "Reversed collab attribution"
-                break
+            # D: returned artist is a substring of the requested artist
+            #    (reversed collab: "21 Savage" in "21 Savage & Post Malone")
+            norm_req_full = normalize_string(requested_artist)
+            if any(len(r) >= 3 and r in norm_req_full for r in ret_artists):
+                found  = True; method = "Reversed collab"; break
 
-            # Check E: if the song title is clearly correct (either high sim OR
-            # the requested title is a substring of the returned title), accept the
-            # result regardless of collab artist attribution.
-            # e.g. 'Rockstar' ⊂ 'Rockstar (feat. 21 Savage)' → valid even if
-            # returned artist is '21 Savage' and requested artist is 'Post Malone'.
-            if song_contained or song_sim >= 0.80:
-                found_artist = True
-                match_method = "Song title confirms identity — collab accepted"
-                break
+            # E: extension collab — returned title is requested title + feat./remix
+            #    e.g. search "Rockstar" by "Post Malone", get title
+            #    "Rockstar (feat. 21 Savage)" attributed to "21 Savage" only.
+            #    Accept IF: the title is genuinely an extension (prefix check)
+            #    AND the artist score is above a minimum plausibility threshold.
+            #    We use 0.20 minimum — this passes "post malone"↔"21 savage" (0.30)
+            #    but must also check that the artist fields aren't completely
+            #    unrelated (different genre/scene entirely).
+            #    Extra guard: reject if best_artist == 0 (totally different names)
+            if is_extension and best_artist >= 0.20:
+                found  = True; method = "Extension collab accepted"; break
 
-    # ── 6. Decision ───────────────────────────────────────────────────────────
-    if found_artist and song_ok:
-        logger.info(
-            f"✓ Valid ({match_method}): '{requested_artist}' – '{requested_song}' "
-            f"[artist={best_artist_score:.2f} song={song_sim:.2f}]"
-        )
-        return _accept(f"Matched via {match_method}", best_artist_score, song_sim,
-                       returned_artists, returned_song, False)
+    # ── Decision ─────────────────────────────────────────────────────────────
+    if found and song_ok:
+        logger.info(f"✓ {method}: '{requested_artist}'-'{requested_song}' "
+                    f"[a={best_artist:.2f} s={song_sim:.2f}]")
+        return _ok(f"Matched via {method}", best_artist, song_sim,
+                   ret_artists, ret_song, False)
 
-    # Build debug reason
     parts = []
-    if not found_artist:
-        parts.append(f"artist score={best_artist_score:.2f} < {artist_thresh:.2f}")
+    if not found:
+        parts.append(f"artist score={best_artist:.2f} < {artist_thresh:.2f}")
     if not song_ok:
         parts.append(f"song score={song_sim:.2f} < {song_thresh:.2f}")
     reason = " | ".join(parts)
-
-    logger.warning(
-        f"✗ Rejected: '{requested_artist} – {requested_song}' vs "
-        f"'{raw_returned_str} – {returned_song}' [{reason}]"
-    )
+    logger.warning(f"✗ Rejected '{requested_artist}-{requested_song}' vs "
+                   f"'{raw_ret_str}-{ret_song}': {reason}")
     return {
         "valid":            False,
         "reason":           reason,
-        "artist_match":     round(best_artist_score, 3),
+        "artist_match":     round(best_artist, 3),
         "song_match":       round(song_sim, 3),
-        "returned_artists": returned_artists,
-        "returned_song":    returned_song,
+        "returned_artists": ret_artists,
+        "returned_song":    ret_song,
         "script_mismatch":  False,
     }
 
 
-def _accept(reason, artist_score, song_score, returned_artists, returned_song, script_mismatch):
+def _ok(reason, artist, song, ret_artists, ret_song, script):
     return {
         "valid":            True,
         "reason":           reason,
-        "artist_match":     round(float(artist_score), 3),
-        "song_match":       round(float(song_score), 3),
-        "returned_artists": returned_artists,
-        "returned_song":    returned_song,
-        "script_mismatch":  script_mismatch,
+        "artist_match":     round(float(artist), 3),
+        "song_match":       round(float(song), 3),
+        "returned_artists": ret_artists,
+        "returned_song":    ret_song,
+        "script_mismatch":  script,
     }
 
 
@@ -343,39 +324,21 @@ def validate_and_filter_results(
     threshold: float = 0.75,
 ) -> dict:
     """
-    Run validate_lyrics_match over a list of fetcher attempt dicts.
-
-    Each attempt: { "api": str, "result": dict, "success": bool }
-
-    Returns:
-        {
-            "has_valid_match": bool,
-            "valid_results":   list[{ api, result, validation }],
-            "all_failed":      bool,
-        }
+    Validate a list of fetcher attempts.
+    Each attempt: { 'api': str, 'result': dict, 'success': bool }
+    Returns: { 'has_valid_match': bool, 'valid_results': list, 'all_failed': bool }
     """
-    valid_results   = []
-    invalid_results = []
-
+    valid_results = []
     for attempt in attempts:
-        if not isinstance(attempt, dict):
-            continue
-        if not attempt.get("success", True):
+        if not isinstance(attempt, dict) or not attempt.get("success", True):
             continue
         result = attempt.get("result")
         if not result:
             continue
-
         val = validate_lyrics_match(requested_artist, requested_song, result, threshold)
-
         if val["valid"]:
-            valid_results.append({
-                "api":        attempt.get("api"),
-                "result":     result,
-                "validation": val,
-            })
+            valid_results.append({"api": attempt.get("api"), "result": result, "validation": val})
         else:
-            invalid_results.append({"api": attempt.get("api"), "reason": val["reason"]})
             logger.debug(f"  Rejected [{attempt.get('api')}]: {val['reason']}")
 
     return {
