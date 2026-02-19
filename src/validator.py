@@ -21,13 +21,21 @@ def get_similarity_ratio(str1: str, str2: str) -> float:
     return SequenceMatcher(None, str1, str2).ratio()
 
 def split_artists(artist_str: str) -> list:
-    """Split artist string into individual normalized names"""
+    """Split artist string into individual normalized names, deduplicating."""
     if not artist_str:
         return []
     featuring_patterns = r'\s*(feat\.|ft\.|featuring|with|&|and)\s*'
     artist_str = re.sub(featuring_patterns, ', ', artist_str, flags=re.I)
     delimiters = r'\s*,\s*|\s*;\s*|\s*/\s*'
-    return [normalize_string(a) for a in re.split(delimiters, artist_str) if a.strip()]
+    # Deduplicate while preserving order — "Adele, Adele" → ["adele"]
+    seen = set()
+    result = []
+    for a in re.split(delimiters, artist_str):
+        norm = normalize_string(a)
+        if norm and norm not in seen:
+            seen.add(norm)
+            result.append(norm)
+    return result
 
 def extract_artist_song_from_result(result: dict) -> tuple:
     """Extract artist list and song title from result dict"""
@@ -89,6 +97,12 @@ def validate_lyrics_match(requested_artist: str, requested_song: str, result: di
             match_method = "Song Title"
             break
 
+    # Compute best artist match score for the return dict
+    best_artist_score = 0.0
+    for req in requested_artists:
+        for ret in returned_artists:
+            best_artist_score = max(best_artist_score, get_similarity_ratio(req, ret))
+
     if found_match and song_similarity >= threshold:
         logger.info(f"✓ Valid match ({match_method}): '{requested_artist}' - '{requested_song}'")
         return {
@@ -96,6 +110,7 @@ def validate_lyrics_match(requested_artist: str, requested_song: str, result: di
             "reason": f"Matched via {match_method}",
             "returned_artists": returned_artists,
             "returned_song": returned_song,
+            "artist_match": round(best_artist_score, 3),
             "song_match": round(song_similarity, 3)
         }
     
@@ -105,6 +120,7 @@ def validate_lyrics_match(requested_artist: str, requested_song: str, result: di
         "reason": "Artist not found in metadata",
         "returned_artists": returned_artists,
         "returned_song": returned_song,
+        "artist_match": round(best_artist_score, 3),
         "song_match": round(song_similarity, 3)
     }
 

@@ -5,7 +5,6 @@ from src.utils import maybe_await
 from src.sources import ALL_FETCHERS
 from src.validator import validate_and_filter_results
 import logging
-from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
 
 logger = get_logger("fetch_controller")
 
@@ -26,22 +25,12 @@ DEFAULT_PLAIN_SEQUENCE = [1, 2, 3, 4, 5, 6]
 FAST_MODE_SEQUENCE = [2, 3]  # LRCLIB and SimpMusic
 
 async def fetch_with_timeout(api_name: str, fetcher, artist_name: str, song_title: str, timestamps: bool, timeout: int = 10):
-    """Fetch with timeout protection and automatic retry on transient failures"""
-
-    @retry(
-        wait=wait_exponential(multiplier=0.5, min=1, max=4),
-        stop=stop_after_attempt(2),
-        retry=retry_if_exception_type(Exception),
-        reraise=True
-    )
-    async def _fetch_with_retry():
-        return await asyncio.wait_for(
+    """Fetch with timeout protection"""
+    try:
+        result = await asyncio.wait_for(
             maybe_await(fetcher.fetch, artist_name, song_title, timestamps=timestamps),
             timeout=timeout
         )
-
-    try:
-        result = await _fetch_with_retry()
         # Validate result has actual lyrics
         if result and (not timestamps or result.get("hasTimestamps") or result.get("timed_lyrics") or result.get("timestamped")):
             return {"api": api_name, "result": result, "success": True}
@@ -146,14 +135,15 @@ async def fetch_lyrics_controller(artist_name: str, song_title: str, timestamps:
             validation = validate_and_filter_results(artist_name, song_title, attempts, threshold=0.75)
             
             if validation["has_valid_match"]:
-                # Return the first valid result with validation info (no duplicate data)
+                # Return the first valid result
                 valid_result = validation["valid_results"][0]
                 response = {
                     "status": "success",
                     "data": valid_result["result"]
                 }
-                # Only add validation if it's useful (i.e., if match isn't perfect)
-                if valid_result["validation"]["artist_match"] < 1.0 or valid_result["validation"]["song_match"] < 1.0:
+                # Only add validation info if the match wasn't perfect
+                song_match = valid_result["validation"].get("song_match", 1.0)
+                if song_match < 1.0:
                     response["validation"] = valid_result["validation"]
                 return response
             else:
