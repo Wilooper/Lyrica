@@ -1,79 +1,90 @@
-import re
 from datetime import datetime, timezone
-import requests
+import httpx
 from src.config import LRCLIB_API_URL
 from src.logger import get_logger
-from .base_fetcher import BaseFetcher
+from .base_fetcher import BaseFetcher, get_http_client, build_result, parse_lrc
 
 logger = get_logger("lrclib_fetcher")
 
+SEARCH_URL = "https://lrclib.net/api/search"
+
+
 class LRCLIBFetcher(BaseFetcher):
-    def fetch(self, artist: str, song: str, timestamps: bool=True):
+    source_name = "lrclib"
+
+    async def fetch(self, artist: str, song: str, timestamps: bool = True):
+        """
+        Two-step LRCLIB fetch:
+          1. Search to find the best matching track (with album/duration metadata).
+          2. GET /api/get with those exact params for the synced/plain lyrics.
+
+        Both calls reuse the shared async httpx client — no new TCP handshakes.
+        """
+        client = get_http_client()
         try:
-            logger.info(f"Attempting LRCLIB API for {artist} - {song}")
-            search_url = "https://lrclib.net/api/search"
-            params = {"track_name": song, "artist_name": artist}
-            search_resp = requests.get(search_url, params=params, timeout=10)
+            logger.info(f"Attempting LRCLIB for {artist} - {song}")
+
+            # Step 1: search
+            search_resp = await client.get(
+                SEARCH_URL,
+                params={"track_name": song, "artist_name": artist},
+            )
             if search_resp.status_code != 200:
+                logger.warning(f"LRCLIB search returned {search_resp.status_code}")
                 return None
+
             results = search_resp.json()
             if not results:
                 return None
+
             track = results[0]
-            get_params = {
-                "track_name": track.get("trackName"),
-                "artist_name": track.get("artistName"),
-                "album_name": track.get("albumName"),
-                "duration": track.get("duration")
-            }
-            get_resp = requests.get(LRCLIB_API_URL, params=get_params, timeout=10)
+
+            # Step 2: get exact lyrics
+            get_resp = await client.get(
+                LRCLIB_API_URL,
+                params={
+                    "track_name": track.get("trackName"),
+                    "artist_name": track.get("artistName"),
+                    "album_name":  track.get("albumName"),
+                    "duration":    track.get("duration"),
+                },
+            )
             if get_resp.status_code != 200:
                 return None
+
             data = get_resp.json()
-            lyrics = data.get("syncedLyrics") if timestamps else data.get("plainLyrics")
-            if not lyrics:
+
+            # Pick the right lyric field
+            raw_lyrics = (
+                data.get("syncedLyrics") if timestamps else data.get("plainLyrics")
+            )
+            # Fallback: if synced was requested but unavailable, try plain
+            if not raw_lyrics and timestamps:
+                raw_lyrics = data.get("plainLyrics")
+
+            if not raw_lyrics:
                 return None
-            result = {
-                "source": "lrclib",
-                "artist": data.get("artistName"),
-                "title": data.get("trackName"),
-                "album": data.get("albumName"),
-                "duration": data.get("duration"),
-                "instrumental": data.get("instrumental", False),
-                "lyrics": lyrics,
-                "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-            }
-            # parse timed lyrics to timed_lyrics list if timestamps requested
+
+            duration_ms = int(data.get("duration", 0) * 1000) or None
+            timed = None
             if timestamps and data.get("syncedLyrics"):
-                timed_lyrics = []
-                lines = data["syncedLyrics"].split("\n")
-                for i, line in enumerate(lines):
-                    match = re.match(r"\[(\d{2}:\d{2}\.?\.?\d{2})\](.*)", line)
-                    if match:
-                        time_str, text = match.groups()
-                        time_str = time_str.replace("..", ".")
-                        try:
-                            minutes, seconds = map(float, time_str.split(":"))
-                            start_time = int((minutes * 60 + seconds) * 1000)
-                            end_time = None
-                            if i < len(lines) - 1:
-                                next_match = re.match(r"\[(\d{2}:\d{2}\.?\.?\d{2})\](.*)", lines[i + 1])
-                                if next_match:
-                                    next_time_str = next_match.group(1).replace("..", ".")
-                                    next_minutes, next_seconds = map(float, next_time_str.split(":"))
-                                    end_time = int((next_minutes * 60 + next_seconds) * 1000)
-                                else:
-                                    end_time = start_time + 4000
-                            else:
-                                end_time = start_time + 4000 if not data.get("duration") else int(data["duration"] * 1000)
-                            if text.strip():
-                                timed_lyrics.append({"text": text.strip(), "start_time": start_time, "end_time": end_time, "id": f"lrc_{i}"})
-                        except ValueError:
-                            continue
-                if timed_lyrics:
-                    result["timed_lyrics"] = timed_lyrics
-                    result["hasTimestamps"] = True
-            return result
+                timed = parse_lrc(data["syncedLyrics"], total_duration_ms=duration_ms)
+
+            return build_result(
+                source="lrclib",
+                artist=data.get("artistName", artist),
+                title=data.get("trackName", song),
+                lyrics=raw_lyrics,
+                timed_lyrics=timed,
+                has_timestamps=bool(timed),
+                album=data.get("albumName"),
+                duration=data.get("duration"),
+                instrumental=data.get("instrumental", False),
+            )
+
+        except httpx.TimeoutException:
+            logger.warning(f"LRCLIB timeout for {artist} - {song}")
+            return None
         except Exception as e:
-            logger.error(f"LRCLIB API error: {e}")
+            logger.error(f"LRCLIB error: {e}")
             return None

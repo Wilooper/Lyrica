@@ -1,26 +1,33 @@
-import requests
-from datetime import datetime, timezone
+import httpx
 from src.logger import get_logger
-from .base_fetcher import BaseFetcher
+from .base_fetcher import BaseFetcher, get_http_client, build_result
 
 logger = get_logger("lyricsovh_fetcher")
 
+
 class LyricsOvhFetcher(BaseFetcher):
-    def fetch(self, artist: str, song: str, timestamps: bool=False):
+    source_name = "lyrics.ovh"
+
+    async def fetch(self, artist: str, song: str, timestamps: bool = False):
+        client = get_http_client()
         try:
-            logger.info(f"Attempting Lyrics.ovh API for {artist} - {song}")
-            url = f"https://api.lyrics.ovh/v1/{artist}/{song}"
-            response = requests.get(url, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                if "lyrics" in data and data["lyrics"].strip():
-                    return {
-                        "source": "lyrics.ovh",
-                        "artist": artist,
-                        "title": song,
-                        "lyrics": data["lyrics"],
-                        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-                    }
+            logger.info(f"Attempting Lyrics.ovh for {artist} - {song}")
+            resp = await client.get(f"https://api.lyrics.ovh/v1/{artist}/{song}")
+            if resp.status_code != 200:
+                return None
+            data = resp.json()
+            lyrics = data.get("lyrics", "").strip()
+            if not lyrics:
+                return None
+            return build_result(
+                source="lyrics.ovh",
+                artist=artist,
+                title=song,
+                lyrics=lyrics,
+            )
+        except httpx.TimeoutException:
+            logger.warning(f"Lyrics.ovh timeout for {artist} - {song}")
+            return None
         except Exception as e:
             logger.error(f"Lyrics.ovh error: {e}")
-        return None
+            return None
