@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import os
 import asyncio
 import logging
+import httpx as _httpx
 
 from src.logger import get_logger
 from src.cache import make_cache_key, load_from_cache, save_to_cache, clear_cache, cache_stats
@@ -131,6 +132,15 @@ def register_routes(app):
                         "url": "/cache/stats",
                         "method": "GET",
                         "description": "Get cache statistics"
+                    },
+                    "suggestion": {
+                        "url": "/suggestion",
+                        "method": "GET",
+                        "description": "Search for songs by name and return matching titles with their artist",
+                        "examples": [
+                            "/suggestion?q=Imagine",
+                            "/suggestion?q=Imagine&limit=5"
+                        ]
                     },
                     "music_app": {
                         "url": "/app",
@@ -786,6 +796,86 @@ def register_routes(app):
                 }),
                 500,
             )
+
+    @app.route("/suggestion", methods=["GET"])
+    def suggestion():
+        """Search MusicBrainz for songs matching a query and return title + artist"""
+        query = request.args.get("q", "").strip()
+        limit = request.args.get("limit", 10, type=int)
+
+        if not query:
+            return (
+                jsonify({
+                    "status": "error",
+                    "error": {
+                        "message": "Query parameter 'q' is required",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                }),
+                400,
+            )
+
+        if limit < 1 or limit > 100:
+            limit = 10
+
+        logger.info(f"Suggestion request: q={query}, limit={limit}")
+
+        try:
+            with _httpx.Client(timeout=10) as client:
+                resp = client.get(
+                    "https://musicbrainz.org/ws/2/recording/",
+                    params={"query": query, "fmt": "json", "limit": limit},
+                    headers={"User-Agent": "Lyrica/1.0 (https://github.com/Wilooper/Lyrica)"},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+        except _httpx.TimeoutException:
+            logger.error(f"Timeout querying MusicBrainz for: {query}")
+            return (
+                jsonify({
+                    "status": "error",
+                    "error": {
+                        "message": "Request timed out while contacting MusicBrainz",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                }),
+                504,
+            )
+        except Exception as e:
+            logger.error(f"MusicBrainz suggestion error: {str(e)}")
+            return (
+                jsonify({
+                    "status": "error",
+                    "error": {
+                        "message": "Failed to fetch suggestions from MusicBrainz",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                }),
+                500,
+            )
+
+        recordings = data.get("recordings", [])
+        results = []
+        for rec in recordings:
+            title = rec.get("title", "")
+            artist_credits = rec.get("artist-credit", [])
+            artist_parts = []
+            for credit in artist_credits:
+                if isinstance(credit, dict) and "artist" in credit:
+                    artist_parts.append(credit["artist"].get("name", ""))
+                    artist_parts.append(credit.get("joinphrase", ""))
+                elif isinstance(credit, str):
+                    artist_parts.append(credit)
+            artist = "".join(artist_parts).strip() or "Unknown Artist"
+            results.append({"title": title, "artist": artist})
+
+        return jsonify({
+            "status": "success",
+            "query": query,
+            "limit": limit,
+            "total": len(results),
+            "results": results,
+        })
 
     @app.route("/app", methods=["GET"])
     def app_page():
