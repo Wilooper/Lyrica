@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import os
 import asyncio
 import logging
-import httpx as httpx
+import httpx as _httpx
 
 from src.logger import get_logger
 from src.cache import make_cache_key, load_from_cache, save_to_cache, clear_cache, cache_stats
