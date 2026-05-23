@@ -4,11 +4,11 @@
 
 A powerful, open-source RESTful API for retrieving song lyrics with advanced features like mood analysis, timestamped lyrics, metadata extraction, and multi-source aggregation. Built with Python and Flask, optimized for Bollywood and global music queries.
 
-## Before You start:-
-- This is flask version if you want fast api version then visit:-
-  
+## Before You Start:
+- This is the Flask version. If you want the FastAPI version, then visit:
+
 https://github.com/Wilooper/LyricaV2.git
-- Foe some time the meaning analyrizer is removed due to some problems so please ignore any refrence to song ananlyzer.
+- For some time the meaning analyzer is removed due to some problems, so please ignore any reference to song analyzer.
 
 ## ✨ Key Features
 
@@ -26,10 +26,10 @@ https://github.com/Wilooper/LyricaV2.git
 - **Made in India** 🇮🇳 - Optimized for Indian music platforms (JioSaavn integration)
 - **Song Meaning** - Now can tell meaning of song and do a full song analysis
 
-## What's New:-
-- Added a trending endpoint so so you can access top trending content of any country using apple music
-- Added top querry endpoint so you can get user top querries in your server
-- Added a ai engine to tell meaning of song and for full song analysis(please refer to [Song_analysis_guide.md](Song_analysis_guide.md) for detailed info)
+## What's New:
+- Added a trending endpoint so you can access top trending content of any country using Apple Music
+- Added a top query endpoint so you can get user top queries in your server
+- Added an AI engine to tell meaning of song and for full song analysis (please refer to [Song_analysis_guide.md](Song_analysis_guide.md) for detailed info)
 
 ## 🎵 Supported Sources
 
@@ -151,9 +151,9 @@ gunicorn -w 4 -b 127.0.0.1:9999 --timeout 120 run:app
 # Configure Nginx as reverse proxy
 # See deployment guides for full setup
 ```
-## NOTE:-
-- If you don't want to self host or run this project in local host you can use the following link to use prehosted server all endpoints will same as they are in local host
-- LINK:- https://test-0k.onrender.com
+## NOTE:
+- If you don't want to self-host or run this project on localhost, you can use the following link to use the prehosted server. All endpoints will be the same as they are on localhost.
+- LINK: https://test-0k.onrender.com
 ## 📚 Quick API Examples
 
 ### Basic Lyrics Request
@@ -220,7 +220,7 @@ if __name__ == '__main__':
 
 ## 🤝 Contributing
 
-Contributions are welcome! 
+Contributions are welcome!
 
 1. Fork the repository
 2. Create feature branch: `git checkout -b feature/amazing-feature`
@@ -233,9 +233,9 @@ Please ensure:
 - All tests pass
 - Documentation is updated
 - Commit messages are descriptive
-- OR you can just suggest changes to made in project by opening 
-a issue i will try to solve issue ASAP
-- I really wants everyone help so this project can beat every other project so please help me if you don't want to code then just suggest me feature i will add it
+- Or you can just suggest changes to be made in the project by opening an issue and I will try to solve the issue ASAP
+- I really want everyone's help so this project can beat every other project, so please help me. If you don't want to code, then just suggest a feature and I will add it.
+
 ## 📝 License
 
 MIT License © 2025 Lyrica Contributors
@@ -252,14 +252,14 @@ See [LICENSE](LICENSE) file for details.
 ## 📞 Support
 
 - **Documentation**: [USER_GUIDE.md](USER_GUIDE.md)
-- **Song meaning analysis**:[Song_analysis_guide.md](Song_analysis_guide.md)
+- **Song meaning analysis**: [Song_analysis_guide.md](Song_analysis_guide.md)
 - **Issues**: [GitHub Issues](https://github.com/Wilooper/Lyrica/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/Wilooper/Lyrica/discussions)
 - **Email**: thinkelyorg@gmail.com
 
 ---
-**Previous Update & Verison**:jan 26,2026 & version:1.2.0
+**Previous Update & Version**: Jan 26, 2026 & version: 1.2.0
 
-**Latest Updated ON**: february 16, 2026 | **Version**: 1.2.10
+**Latest Updated On**: February 16, 2026 | **Version**: 1.2.10
 
 Made with ❤️ in India 🇮🇳
