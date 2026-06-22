@@ -153,7 +153,9 @@ gunicorn -w 4 -b 127.0.0.1:9999 --timeout 120 run:app
 ```
 ## NOTE:
 - If you don't want to self-host or run this project on localhost, you can use the following link to use the prehosted server. All endpoints will be the same as they are on localhost.
-- LINK: https://test-0k.onrender.com
+- LINK: https://test-0k.onrender.com/
+- LINK 2: https://wilooper-lyrica.hf.space/
+- The hugging face version(Link 2) is made to handle 1000s of user at same time so if you are planning to add this api in your production then use this as it also has a 95% uptime.
 ## 📚 Quick API Examples
 
 ### Basic Lyrics Request
