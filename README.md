@@ -260,8 +260,8 @@ See [LICENSE](LICENSE) file for details.
 - **Email**: thinkelyorg@gmail.com
 
 ---
-**Previous Update & Version**: Jan 26, 2026 & version: 1.2.0
+**Previous Update & Version**: Feb 16, 2026 & version: 1.2.0
 
-**Latest Updated On**: February 16, 2026 | **Version**: 1.2.10
+**Latest Updated On**: June 22, 2026 | **Version**: 1.2.10
 
 Made with ❤️ in India 🇮🇳
