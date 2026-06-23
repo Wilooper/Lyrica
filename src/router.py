@@ -206,12 +206,13 @@ def register_routes(app):
                     }
                 },
                 "fetchers": {
-                    "1": "Genius",
+                    "1": "Genius (requires GENIUS_TOKEN)",
                     "2": "LRCLIB",
-                    "3": "SimpMusic",
-                    "4": "YouTube Music",
-                    "5": "Lyrics.ovh",
-                    "6": "ChartLyrics"
+                    "3": "YouTube Music (3-layer: ytmusicapi / transcript-api / yt-dlp)",
+                    "4": "NetEase (via syncedlyrics, synced LRC)",
+                    "5": "Megalobiz (via syncedlyrics, synced LRC)",
+                    "6": "Musixmatch (via syncedlyrics, optional MUSIXMATCH_TOKEN)",
+                    "7": "SimpMusic",
                 }
             }
         )

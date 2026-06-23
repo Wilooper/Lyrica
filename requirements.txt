@@ -32,7 +32,9 @@ python-dotenv==1.0.1         # load .env in development
 # ── Lyrics sources ───────────────────────────────────────────
 lyricsgenius==3.0.1          # Genius API (requires GENIUS_TOKEN env var)
 ytmusicapi==1.7.4            # YouTube Music (no auth required)
-yt-dlp==2024.5.27            # YouTube fallback / audio info
+yt-dlp==2024.5.27            # YouTube fallback / audio info + subtitle extraction
+youtube-transcript-api==1.2.4 # YouTube caption/transcript fetcher (Layer 2 of YouTube source)
+syncedlyrics==1.0.1          # Synced LRC lyrics: NetEase, Megalobiz, Musixmatch providers
 beautifulsoup4==4.12.3       # HTML scraping (LyricsFreek, Last.fm)
 lxml==5.2.2                  # faster BS4 parser
 

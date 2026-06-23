@@ -11,28 +11,42 @@ logger = get_logger("fetch_controller")
 # Registry
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ── Fetcher ID map ──────────────────────────────────────────────────────────
+# IDs are stable — clients may send ?sequence=1,2,5 to pick sources.
+# Dead sources have been removed; add new ones at the end.
+#
+# DISABLED (tested dead 2026-06-23):
+#   SimpMusic (was 3) — 403 Forbidden
+#   Lyrics.ovh (was 5) — no results
+#   ChartLyrics (was 6) — XML API dead
+#   LyricsFreek (was 7) — DNS dead
 FETCHER_MAP = {
     1: "Genius",
     2: "LRCLIB",
-    3: "SimpMusic",
-    4: "YouTube Music",
-    5: "Lyrics.ovh",
-    6: "ChartLyrics",
+    3: "YouTube Music",
+    4: "NetEase",
+    5: "Megalobiz",
+    6: "Musixmatch",
+    7: "SimpMusic",
 }
 
-DEFAULT_SYNCED_SEQUENCE = [2, 3, 4]
-DEFAULT_PLAIN_SEQUENCE  = [1, 2, 3, 4, 5, 6]
-FAST_MODE_SEQUENCE      = [2, 3]   # LRCLIB + SimpMusic
+# Synced-lyrics sequence: sources that natively return LRC timestamps
+DEFAULT_SYNCED_SEQUENCE = [2, 3, 4, 5, 6, 7]   # LRCLIB, YouTube, NetEase, Megalobiz, Musixmatch, SimpMusic
+# Plain-lyrics sequence: all active sources, Genius first for quality
+DEFAULT_PLAIN_SEQUENCE  = [1, 2, 3, 4, 5, 6, 7]
+# Fast (parallel) mode: best two reliable synced sources
+FAST_MODE_SEQUENCE      = [2, 3]   # LRCLIB + YouTube
 
 
 def _registry() -> dict:
     return {
         1: ("Genius",        ALL_FETCHERS.get("genius")),
         2: ("LRCLIB",        ALL_FETCHERS.get("lrclib")),
-        3: ("SimpMusic",     ALL_FETCHERS.get("simpmusic")),
-        4: ("YouTube Music", ALL_FETCHERS.get("youtube")),
-        5: ("Lyrics.ovh",    ALL_FETCHERS.get("lyricsovh")),
-        6: ("ChartLyrics",   ALL_FETCHERS.get("chartlyrics")),
+        3: ("YouTube Music", ALL_FETCHERS.get("youtube")),
+        4: ("NetEase",       ALL_FETCHERS.get("netease")),
+        5: ("Megalobiz",     ALL_FETCHERS.get("megalobiz")),
+        6: ("Musixmatch",    ALL_FETCHERS.get("musixmatch")),
+        7: ("SimpMusic",     ALL_FETCHERS.get("simpmusic")),
     }
 
 
@@ -196,13 +210,16 @@ async def fetch_lyrics_controller(
         except ValueError:
             return _err("Invalid sequence format: must be comma-separated integers")
 
+        _max_id = max(FETCHER_MAP.keys()) if FETCHER_MAP else 6
         if (
             not fetcher_ids
-            or not all(1 <= x <= 6 for x in fetcher_ids)
-            or len(fetcher_ids) > 6
+            or not all(1 <= x <= _max_id for x in fetcher_ids)
+            or len(fetcher_ids) > _max_id
             or len(fetcher_ids) != len(set(fetcher_ids))
         ):
-            return _err("Invalid sequence: must be unique numbers between 1 and 6")
+            return _err(
+                f"Invalid sequence: must be unique numbers between 1 and {_max_id}"
+            )
 
         use_parallel = len(fetcher_ids) > 1
 
