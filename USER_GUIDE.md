@@ -4,12 +4,28 @@
 
 1. [Getting Started](#getting-started)
 2. [API Endpoints](#api-endpoints)
+   - [Lyrics](#1-lyrics-endpoint-main)
+   - [Metadata](#2-metadata-endpoint)
+   - [Trending](#3-trending-endpoint)
+   - [Analytics - Top Queries](#4-analytics---top-queries)
+   - [Analytics - Trending by Country](#5-analytics---trending-by-country)
+   - [Analytics - Trending vs Queries](#6-analytics---trending-vs-queries)
+   - [Analytics - Trending Intersection](#7-analytics---trending-intersection)
+   - [Song Suggestion / Autocomplete](#8-song-suggestion--autocomplete)
+   - [JioSaavn Search](#9-jiosaavn-search)
+   - [JioSaavn Play](#10-jiosaavn-play)
+   - [Cache Statistics](#11-cache-statistics)
+   - [Cache Clear (Admin)](#12-cache-clear-admin)
+   - [Web GUI](#13-web-gui)
+   - [API Info](#14-api-info)
 3. [Core Features](#core-features)
-4. [Response Formats](#response-formats)
-5. [Error Handling](#error-handling)
-6. [Best Practices](#best-practices)
-7. [Code Examples](#code-examples)
-8. [OpenAPI Specification](#openapi-specification)
+4. [Source Reference](#source-reference)
+5. [Response Formats](#response-formats)
+6. [Error Handling](#error-handling)
+7. [Best Practices](#best-practices)
+8. [Code Examples](#code-examples)
+9. [Installation & Configuration Reference](#installation--configuration-reference)
+10. [FAQ](#frequently-asked-questions)
 
 ---
 
@@ -19,20 +35,20 @@
 
 - **Local Development**: `http://127.0.0.1:9999`
 - **Production Demo**: `https://test-0k.onrender.com`
-- **API Documentation**: `/` (root endpoint)
-- **Swagger UI**: `/swagger` or `/swagger-ui`
+- **Production (High Traffic)**: `https://wilooper-lyrica.hf.space`
+- **API Info**: `/` (root endpoint)
 - **Web GUI**: `/app`
 
 ### Authentication
 
-Lyrica does not require authentication for public endpoints. Admin endpoints require:
+Lyrica does not require authentication for public endpoints. Admin endpoints require an `ADMIN_KEY`:
 
 ```bash
 # Method 1: Query parameter
-GET /cache/clear?key=your_admin_key
+POST /cache/clear?key=your_admin_key
 
 # Method 2: Request header
-Authorization: Bearer your_admin_key
+X-ADMIN-KEY: your_admin_key
 ```
 
 ---
@@ -51,27 +67,32 @@ GET /lyrics/
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `artist` | string | Yes | - | Artist name (e.g., "Arijit Singh") |
-| `song` | string | Yes | - | Song title (e.g., "Tum Hi Ho") |
+| `artist` | string | Yes | — | Artist name (e.g., `"Arijit Singh"`) |
+| `song` | string | Yes | — | Song title (e.g., `"Tum Hi Ho"`) |
 | `timestamps` | boolean | No | false | Include synchronized LRC timestamps |
-| `mood` | boolean | No | false | Include sentiment & word analysis |
-| `metadata` | boolean | No | false | Include song metadata (cover, duration, genre) |
-| `fast` | boolean | No | false | Use parallel fetching for speed |
+| `mood` | boolean | No | false | Include sentiment & word frequency analysis |
+| `metadata` | boolean | No | false | Include song metadata (cover art, duration, genre) |
+| `fast` | boolean | No | false | Parallel fetching across best sources |
 | `pass` | boolean | No | false | Enable custom fetcher sequence |
-| `sequence` | string | No | - | Custom fetcher IDs (e.g., "1,3,5") |
+| `sequence` | string | No | — | Comma-separated fetcher IDs (e.g., `"1,3,5"`). Requires `pass=true` |
+| `country` | string | No | US | Country code for query analytics recording (e.g., `IN`, `GB`) |
 
-#### Source Sequence IDs
+#### Source IDs
 
-- **1** → Genius (comprehensive lyrics, good quality)
-- **2** → LRCLIB (timestamped lyrics)
-- **3** → SimpMusic (fast, reliable)
-- **4** → YouTube Music (timestamped, premium quality)
-- **5** → Lyrics.ovh (fast fallback)
-- **6** → ChartLyrics (secondary fallback)
+| ID | Source | Lyrics Type |
+|----|--------|-------------|
+| 1 | Genius | Plain (requires `GENIUS_TOKEN`) |
+| 2 | LRCLIB | Timestamped + Plain |
+| 3 | YouTube Music | Timestamped + Plain |
+| 4 | NetEase | Timestamped (LRC) |
+| 5 | Megalobiz | Timestamped (LRC) |
+| 6 | Musixmatch | Timestamped (LRC) |
+| 7 | SimpMusic | Timestamped + Plain |
 
 **Default Sequences:**
-- Plain lyrics: `[1, 2, 3, 4, 5, 6]`
-- With timestamps: `[2, 3, 4]` (only sources with timestamps)
+- Plain lyrics: `[1, 2, 3, 4, 5, 6, 7]`
+- With timestamps: `[2, 3, 4, 5, 6, 7]`
+- Fast mode: `[2, 3]` (LRCLIB + YouTube Music, parallel)
 
 #### Example Requests
 
@@ -95,9 +116,9 @@ curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&moo
 curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&metadata=true"
 ```
 
-**Custom Source Sequence (Skip LRCLIB)**
+**Custom Source Sequence**
 ```bash
-curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&pass=true&sequence=1,3,4,5"
+curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&pass=true&sequence=2,3,4"
 ```
 
 **Fast Mode (All Features)**
@@ -117,13 +138,12 @@ curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&fas
     "title": "Tum Hi Ho",
     "plain_lyrics": "Hum tere bin ab reh nahi sakte\nTere bina kya wajood mera...",
     "lyrics": "Hum tere bin ab reh nahi sakte\nTere bina kya wajood mera...",
-    "timestamp": "2025-01-15T12:20:00+00:00"
+    "timestamp": "2026-06-24T12:20:00+00:00"
   },
   "attempts": [
     {
-      "api": "youtube_music",
-      "status": "no_results",
-      "message": "No lyrics available"
+      "api": "lrclib",
+      "status": "no_lyrics"
     }
   ]
 }
@@ -137,24 +157,24 @@ curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&fas
     "source": "youtube_music",
     "artist": "Arijit Singh",
     "title": "Tum Hi Ho",
-    "plain_lyrics": "Hum tere bin ab reh nahi sakte\nTere bina kya wajood mera...",
-    "lyrics": "Hum tere bin ab reh nahi sakte\nTere bina kya wajood mera...",
+    "plain_lyrics": "Hum tere bin ab reh nahi sakte...",
+    "lyrics": "Hum tere bin ab reh nahi sakte...",
     "timed_lyrics": [
       {
         "text": "Hum tere bin ab reh nahi sakte",
         "start_time": 0,
-        "end_time": 10000,
+        "end_time": 5200,
         "id": 1
       },
       {
         "text": "Tere bina kya wajood mera",
-        "start_time": 10000,
-        "end_time": 20000,
+        "start_time": 5200,
+        "end_time": 10400,
         "id": 2
       }
     ],
     "hasTimestamps": true,
-    "timestamp": "2025-01-15T12:20:00+00:00"
+    "timestamp": "2026-06-24T12:20:00+00:00"
   },
   "attempts": []
 }
@@ -168,8 +188,7 @@ curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&fas
     "source": "genius",
     "artist": "Arijit Singh",
     "title": "Tum Hi Ho",
-    "lyrics": "...",
-    "timestamp": "2025-01-15T12:20:00+00:00"
+    "lyrics": "..."
   },
   "mood_analysis": {
     "sentiment": {
@@ -210,39 +229,46 @@ curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&fas
 
 #### Error Responses
 
-**Missing Parameters (400 Bad Request)**
+**Missing Parameters (400)**
 ```json
 {
   "status": "error",
   "error": {
     "message": "Artist and song name are required",
-    "timestamp": "2025-01-15T12:20:00+00:00"
+    "timestamp": "2026-06-24T12:20:00+00:00"
   }
 }
 ```
 
-**No Lyrics Found (404 Not Found)**
+**No Lyrics Found (from error message)**
 ```json
 {
   "status": "error",
   "error": {
     "message": "No lyrics found for 'XYZ' by 'Unknown Artist'",
-    "attempts": [
-      {"api": "genius", "status": "no_results"},
-      {"api": "lrclib", "status": "no_results"},
-      {"api": "youtube_music", "status": "no_results"}
-    ]
-  },
-  "timestamp": "2025-01-15T12:20:00+00:00"
+    "timestamp": "2026-06-24T12:20:00+00:00"
+  }
 }
 ```
 
-**Rate Limit Exceeded (429 Too Many Requests)**
+**Request Timeout (504)**
 ```json
 {
   "status": "error",
   "error": {
-    "message": "Rate limit exceeded. Please wait 45 seconds before retrying.",
+    "message": "Request timed out",
+    "details": "Lyrics fetch took too long",
+    "timestamp": "2026-06-24T12:20:00+00:00"
+  }
+}
+```
+
+**Rate Limit Exceeded (429)**
+```json
+{
+  "status": "error",
+  "error": {
+    "message": "Rate limit exceeded. Please wait before retrying.",
     "retry_after": 45
   }
 }
@@ -293,7 +319,278 @@ curl "http://127.0.0.1:9999/metadata/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho"
 
 ---
 
-### 3. JioSaavn Search Endpoint
+### 3. Trending Endpoint
+
+**Get trending songs by country using Apple Music data**
+
+```
+GET /trending/
+```
+
+#### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `country` | string | No | US | Country code (e.g., `US`, `IN`, `GB`, `JP`, `DE`, `FR`, `BR`, `CA`, `AU`, `MX`) |
+| `countries` | string | No | — | Comma-separated country codes for multi-country response (e.g., `US,IN,GB`) |
+| `limit` | integer | No | 20 | Number of trending songs (1–100) |
+
+#### Example Requests
+
+**Single Country**
+```bash
+curl "http://127.0.0.1:9999/trending/?country=IN&limit=10"
+```
+
+**Multiple Countries**
+```bash
+curl "http://127.0.0.1:9999/trending/?countries=US,IN,GB&limit=5"
+```
+
+#### Response (Single Country)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "country": "IN",
+    "trending": [
+      {
+        "title": "Kesariya",
+        "artist": "Arijit Singh",
+        "rank": 1,
+        "album": "Brahmastra",
+        "cover_art": "https://example.com/cover.jpg"
+      }
+    ],
+    "total": 10,
+    "timestamp": "2026-06-24T12:20:00+00:00"
+  }
+}
+```
+
+#### Response (Multiple Countries)
+
+```json
+{
+  "status": "success",
+  "data": {
+    "countries": {
+      "US": [ { "title": "...", "artist": "..." } ],
+      "IN": [ { "title": "...", "artist": "..." } ],
+      "GB": [ { "title": "...", "artist": "..." } ]
+    },
+    "timestamp": "2026-06-24T12:20:00+00:00"
+  }
+}
+```
+
+**Valid Country Codes:** `US`, `GB`, `IN`, `BR`, `JP`, `DE`, `FR`, `CA`, `AU`, `MX`
+
+---
+
+### 4. Analytics - Top Queries
+
+**Get the most searched songs on your server**
+
+```
+GET /analytics/top-queries/
+```
+
+#### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `limit` | integer | No | 20 | Number of results (1–100) |
+| `country` | string | No | — | Filter by country code |
+| `days` | integer | No | — | Time window in days (omit for all-time) |
+
+#### Example Requests
+
+```bash
+# Global top 20 all-time
+curl "http://127.0.0.1:9999/analytics/top-queries/?limit=20"
+
+# US top 10 from the last 7 days
+curl "http://127.0.0.1:9999/analytics/top-queries/?country=US&days=7&limit=10"
+```
+
+#### Response
+
+```json
+{
+  "status": "success",
+  "data": {
+    "scope": "global",
+    "time_window": "all_time",
+    "top_queries": [
+      {"query": "Arijit Singh - Tum Hi Ho", "count": 154},
+      {"query": "The Weeknd - Blinding Lights", "count": 98}
+    ],
+    "total_unique": 2,
+    "timestamp": "2026-06-24T12:20:00+00:00"
+  }
+}
+```
+
+---
+
+### 5. Analytics - Trending by Country
+
+**Get top user queries for each country**
+
+```
+GET /analytics/trending-by-country/
+```
+
+#### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `limit` | integer | No | 10 | Number of queries per country (1–100) |
+
+#### Example Request
+
+```bash
+curl "http://127.0.0.1:9999/analytics/trending-by-country/?limit=5"
+```
+
+#### Response
+
+```json
+{
+  "status": "success",
+  "data": {
+    "countries": {
+      "IN": [
+        {"query": "Arijit Singh - Tum Hi Ho", "count": 45}
+      ],
+      "US": [
+        {"query": "The Weeknd - Blinding Lights", "count": 30}
+      ]
+    },
+    "total_countries": 2,
+    "timestamp": "2026-06-24T12:20:00+00:00"
+  }
+}
+```
+
+---
+
+### 6. Analytics - Trending vs Queries
+
+**Compare Apple Music trending songs with user query data for a country**
+
+```
+GET /analytics/trending-vs-queries/
+```
+
+#### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `country` | string | No | US | Country code |
+| `limit` | integer | No | 10 | Number of results |
+
+#### Example Request
+
+```bash
+curl "http://127.0.0.1:9999/analytics/trending-vs-queries/?country=IN&limit=10"
+```
+
+#### Response
+
+```json
+{
+  "status": "success",
+  "data": {
+    "trending": [...],
+    "top_queries": [...]
+  }
+}
+```
+
+---
+
+### 7. Analytics - Trending Intersection
+
+**Find user queries that match currently trending songs**
+
+```
+GET /analytics/trending-intersection/
+```
+
+#### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `country` | string | No | US | Country code |
+| `limit` | integer | No | 10 | Maximum results |
+
+#### Example Request
+
+```bash
+curl "http://127.0.0.1:9999/analytics/trending-intersection/?country=US&limit=10"
+```
+
+#### Response
+
+```json
+{
+  "status": "success",
+  "data": {
+    "country": "US",
+    "matches": [
+      {"query": "Taylor Swift - Shake It Off", "trending_rank": 3, "query_count": 22}
+    ],
+    "total_matches": 1,
+    "timestamp": "2026-06-24T12:20:00+00:00"
+  }
+}
+```
+
+---
+
+### 8. Song Suggestion / Autocomplete
+
+**Search for songs by name and return matching titles with artists (powered by MusicBrainz)**
+
+```
+GET /suggestion
+```
+
+#### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `q` | string | Yes | — | Search query |
+| `limit` | integer | No | 10 | Number of results (1–100) |
+
+#### Example Request
+
+```bash
+curl "http://127.0.0.1:9999/suggestion?q=Tum%20Hi%20Ho&limit=5"
+```
+
+#### Response
+
+```json
+{
+  "status": "success",
+  "query": "Tum Hi Ho",
+  "limit": 5,
+  "total": 3,
+  "results": [
+    {"title": "Tum Hi Ho", "artist": "Arijit Singh"},
+    {"title": "Tum Hi Ho (Reprise)", "artist": "Arijit Singh"},
+    {"title": "Tum Hi Ho (Cover)", "artist": "Various"}
+  ]
+}
+```
+
+---
+
+### 9. JioSaavn Search
 
 **Search for songs on JioSaavn**
 
@@ -334,9 +631,9 @@ curl "http://127.0.0.1:9999/api/jiosaavn/search?q=Tum%20Hi%20Ho"
 
 ---
 
-### 4. JioSaavn Play Endpoint
+### 10. JioSaavn Play
 
-**Get playable stream URL from JioSaavn**
+**Get a playable stream URL from JioSaavn**
 
 ```
 GET /api/jiosaavn/play
@@ -346,7 +643,7 @@ GET /api/jiosaavn/play
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `songLink` | string | Yes | Song link from JioSaavn search |
+| `songLink` | string | Yes | Song link from JioSaavn search results |
 
 #### Example Request
 
@@ -371,7 +668,7 @@ curl "http://127.0.0.1:9999/api/jiosaavn/play?songLink=https://jiosaavn.com/song
 
 ---
 
-### 5. Cache Statistics Endpoint
+### 11. Cache Statistics
 
 **Get cache hit/miss statistics**
 
@@ -394,29 +691,31 @@ curl "http://127.0.0.1:9999/cache/stats"
   "misses": 85,
   "total_entries": 150,
   "hit_rate": "74.6%",
-  "timestamp": "2025-01-15T12:20:00+00:00"
+  "timestamp": "2026-06-24T12:20:00+00:00"
 }
 ```
 
 ---
 
-### 6. Cache Clear Endpoint (Admin)
+### 12. Cache Clear (Admin)
 
-**Clear all cached lyrics**
+**Clear all cached data — requires `ADMIN_KEY`**
 
 ```
 POST /cache/clear
-GET /admin/cache/clear?key=your_admin_key
 ```
 
-#### Example Requests
+#### Authentication
+
+Pass your admin key via query parameter or header:
 
 ```bash
-# Using POST
-curl -X POST http://127.0.0.1:9999/cache/clear
+# Query parameter
+curl -X POST "http://127.0.0.1:9999/cache/clear?key=your_admin_key"
 
-# Using GET with admin key
-curl "http://127.0.0.1:9999/admin/cache/clear?key=your_admin_key"
+# Header
+curl -X POST http://127.0.0.1:9999/cache/clear \
+  -H "X-ADMIN-KEY: your_admin_key"
 ```
 
 #### Response
@@ -426,7 +725,7 @@ curl "http://127.0.0.1:9999/admin/cache/clear?key=your_admin_key"
   "status": "success",
   "details": {
     "cleared": 150,
-    "timestamp": "2025-01-15T12:20:00+00:00"
+    "timestamp": "2026-06-24T12:20:00+00:00"
   }
 }
 ```
@@ -437,14 +736,14 @@ curl "http://127.0.0.1:9999/admin/cache/clear?key=your_admin_key"
 {
   "status": "error",
   "error": {
-    "message": "Unauthorized - Invalid admin key"
+    "message": "Unauthorized"
   }
 }
 ```
 
 ---
 
-### 7. Web GUI Endpoint
+### 13. Web GUI
 
 **Interactive web interface for testing**
 
@@ -452,194 +751,133 @@ curl "http://127.0.0.1:9999/admin/cache/clear?key=your_admin_key"
 GET /app
 ```
 
-Navigate to `http://127.0.0.1:9999/app` in your browser.
+Navigate to `http://127.0.0.1:9999/app` in your browser to use the built-in GUI.
 
 ---
 
-### 8. API Metadata Endpoint
+### 14. API Info
 
-**Get API version, status, and endpoint documentation**
+**Get API version, status, and endpoint summary**
 
 ```
 GET /
 ```
 
-#### Response
-
-```json
-{
-  "api": "Lyrica",
-  "version": "1.2.0",
-  "status": "active",
-  "description": "A comprehensive lyrics API with mood analysis and metadata extraction",
-  "timestamp": "2025-01-15T12:20:00+00:00",
-  "endpoints": {
-    "lyrics": {
-      "url": "/lyrics/",
-      "method": "GET",
-      "description": "Fetch lyrics for a song"
-    },
-    "metadata": {
-      "url": "/metadata/",
-      "method": "GET",
-      "description": "Get song metadata without lyrics"
-    },
-    "cache_stats": {
-      "url": "/cache/stats",
-      "method": "GET",
-      "description": "Get cache statistics"
-    }
-  },
-  "fetchers": {
-    "1": "Genius",
-    "2": "LRCLIB",
-    "3": "SimpMusic",
-    "4": "YouTube Music",
-    "5": "Lyrics.ovh",
-    "6": "ChartLyrics"
-  }
-}
-```
+Returns a JSON object listing all endpoints, parameters, and active fetchers.
 
 ---
 
 ## Core Features
 
-### Feature 1: Timestamped Lyrics (LRC Format)
+### Timestamped Lyrics (LRC Format)
 
-Get lyrics synchronized with millisecond precision.
-
-**Use Case:** Display lyrics as song plays in real-time.
+Get lyrics synchronized with millisecond precision — perfect for karaoke-style displays.
 
 ```bash
 curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&timestamps=true"
 ```
 
-**Response Example:**
+**Response includes `timed_lyrics` array:**
 ```json
 {
-  "data": {
-    "timed_lyrics": [
-      {
-        "text": "Hum tere bin ab reh nahi sakte",
-        "start_time": 0,
-        "end_time": 5200,
-        "id": 1
-      },
-      {
-        "text": "Tere bina kya wajood mera",
-        "start_time": 5200,
-        "end_time": 10400,
-        "id": 2
-      }
-    ],
-    "hasTimestamps": true
-  }
+  "timed_lyrics": [
+    {"text": "Hum tere bin ab reh nahi sakte", "start_time": 0, "end_time": 5200, "id": 1},
+    {"text": "Tere bina kya wajood mera", "start_time": 5200, "end_time": 10400, "id": 2}
+  ],
+  "hasTimestamps": true
 }
 ```
 
-### Feature 2: Mood & Sentiment Analysis
+**Sources that provide timestamps:** LRCLIB (2), YouTube Music (3), NetEase (4), Megalobiz (5), Musixmatch (6), SimpMusic (7)
 
-Understand the emotional tone of lyrics.
+---
 
-**Use Case:** Show mood tags on music player, create mood-based playlists.
+### Mood & Sentiment Analysis
+
+Understand the emotional tone of a song's lyrics.
 
 ```bash
 curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&mood=true"
 ```
 
-**Analysis Includes:**
-- **Polarity**: -1 (negative) to +1 (positive)
-- **Subjectivity**: 0 (objective) to 1 (subjective)
-- **Emotion**: sad, happy, energetic, calm, etc.
+**Analysis includes:**
+- **Polarity**: −1 (very negative) to +1 (very positive)
+- **Subjectivity**: 0 (objective) to 1 (highly subjective)
+- **Emotion**: `sad`, `happy`, `energetic`, `calm`, `romantic`, etc.
 - **Top Words**: Most frequently used meaningful words
 
-**Response Example:**
-```json
-{
-  "mood_analysis": {
-    "sentiment": {
-      "polarity": -0.45,
-      "subjectivity": 0.75,
-      "emotion": "sad, romantic",
-      "confidence": 0.87
-    },
-    "top_words": [
-      {"word": "love", "frequency": 12},
-      {"word": "heart", "frequency": 8},
-      {"word": "night", "frequency": 7},
-      {"word": "dream", "frequency": 6},
-      {"word": "forever", "frequency": 5}
-    ]
-  }
-}
-```
+---
 
-### Feature 3: Rich Metadata
+### Rich Metadata
 
-Get comprehensive song information.
-
-**Use Case:** Display song details in app UI, show album art, filter by genre.
+Get comprehensive song information alongside lyrics.
 
 ```bash
 curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&metadata=true"
 ```
 
-**Metadata Includes:**
-- Album artwork (high-resolution)
-- Duration
-- Genre
-- Release date
-- Album name
-- Producer/Writer credits
-- Explicit content flag
+**Metadata includes:** album artwork, duration, genre, release date, album name, producer/writer credits, explicit content flag.
 
-### Feature 4: Fast Mode (Parallel Fetching)
+---
 
-Get results in sub-second time by checking multiple sources simultaneously.
+### Fast Mode (Parallel Fetching)
 
-**Use Case:** Fast search features, real-time autocomplete.
+Race the two best synced sources (LRCLIB + YouTube Music) simultaneously — first valid result wins.
 
 ```bash
 curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&fast=true"
 ```
 
 **Performance:**
-- Default: ~500-2000ms
-- Fast Mode: ~300-800ms
-- With caching: <50ms
+- Default sequential: ~500–2000 ms
+- Fast Mode: ~300–800 ms
+- With caching: < 50 ms
 
-### Feature 5: Custom Source Sequencing
+---
+
+### Custom Source Sequencing
 
 Control which sources to query and in what order.
 
-**Use Case:** Optimize for your needs (speed vs. quality).
-
 ```bash
-# Skip slow sources, use fast ones only
-curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&pass=true&sequence=3,5,6"
+# Only synced sources
+curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&pass=true&sequence=2,4,5"
 
-# Prioritize timestamped sources
-curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&timestamps=true&pass=true&sequence=4,2"
+# Prioritise Genius + YouTube
+curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&pass=true&sequence=1,3"
 ```
 
-### Feature 6: Intelligent Caching
+When more than one ID is supplied with `pass=true`, all fetchers run **in parallel** and the first validated result wins.
 
-Reduce API calls with smart TTL-based caching.
+---
 
-**Benefits:**
-- 5-minute default cache
-- Redis support for distributed systems
-- Admin cache management
-- Cache statistics
+### Intelligent Caching
+
+Reduce redundant external calls with file-based TTL caching.
 
 ```bash
-# View cache stats
+# View stats
 curl "http://127.0.0.1:9999/cache/stats"
 
 # Clear cache (admin)
-curl -X POST http://127.0.0.1:9999/cache/clear?key=your_admin_key
+curl -X POST "http://127.0.0.1:9999/cache/clear?key=your_admin_key"
 ```
+
+---
+
+## Source Reference
+
+| ID | Name | Type | Notes |
+|----|------|------|-------|
+| 1 | Genius | Plain | Requires `GENIUS_TOKEN` env var |
+| 2 | LRCLIB | Timestamped + Plain | Free, no auth needed, highly reliable |
+| 3 | YouTube Music | Timestamped + Plain | 3-layer: ytmusicapi → transcript-api → yt-dlp |
+| 4 | NetEase | Timestamped (LRC) | Via `syncedlyrics`, large global catalog |
+| 5 | Megalobiz | Timestamped (LRC) | Via `syncedlyrics`, user-contributed |
+| 6 | Musixmatch | Timestamped (LRC) | Via `syncedlyrics`, optional `MUSIXMATCH_TOKEN` |
+| 7 | SimpMusic | Timestamped + Plain | Via api-lyrics.simpmusic.org |
+
+> **Note:** Lyrics.ovh, ChartLyrics, and LyricsFreek have been removed — their APIs are dead as of June 2026.
 
 ---
 
@@ -647,26 +885,24 @@ curl -X POST http://127.0.0.1:9999/cache/clear?key=your_admin_key
 
 ### Standard Response Structure
 
-All responses follow this format:
-
 ```json
 {
-  "status": "success" | "error",
+  "status": "success | error",
   "data": {
-    // Response-specific data
+    // Response-specific payload
   },
   "error": {
-    // Only present if status is "error"
+    // Only present when status == "error"
     "message": "Human-readable error message",
-    "details": "Optional detailed error info"
+    "details": "Optional additional info",
+    "timestamp": "ISO 8601 timestamp"
   },
-  "timestamp": "ISO 8601 timestamp",
   "attempts": [
-    // Only in lyrics endpoint - shows fallback attempts
+    // Only in /lyrics/ — shows fallback attempt log
     {
       "api": "source_name",
-      "status": "success" | "no_results" | "error",
-      "message": "Optional message"
+      "status": "no_lyrics | validation_failed | error | not_configured",
+      "reason": "Optional reason string"
     }
   ]
 }
@@ -681,107 +917,100 @@ All responses follow this format:
 | Code | Meaning | Example |
 |------|---------|---------|
 | 200 | Success | Lyrics found and returned |
-| 400 | Bad Request | Missing required parameters |
-| 404 | Not Found | No lyrics available for song |
-| 429 | Rate Limited | Too many requests in short time |
+| 400 | Bad Request | Missing required parameters or invalid sequence |
+| 403 | Forbidden | Invalid or missing admin key |
+| 404 | Not Found | Endpoint does not exist |
+| 429 | Rate Limited | Too many requests |
 | 500 | Server Error | Internal processing error |
+| 504 | Gateway Timeout | Fetch took too long |
 
 ### Common Errors and Solutions
 
-**Error: "Artist and song name are required"**
+**"Artist and song name are required"**
 ```
 Cause: Missing artist or song parameter
 Solution: Include both ?artist=X&song=Y in request
 ```
 
-**Error: "No lyrics found"**
+**"No lyrics found for '...'"**
 ```
-Cause: Song not available in any source
-Solution: Try exact spelling, popular songs first, check internet
-```
-
-**Error: "Rate limit exceeded"**
-```
-Cause: >15 requests per minute from your IP
-Solution: Wait indicated time, use caching, consider Redis for production
+Cause: No source returned valid lyrics for that query
+Solution: Check spelling, try exact artist/title, try popular songs first
 ```
 
-**Error: "Failed to fetch lyrics"**
+**"Invalid sequence format"**
 ```
-Cause: Network or API error
-Solution: Check internet, verify API keys, check server logs
+Cause: Non-integer values in sequence string
+Solution: Use comma-separated integers, e.g. sequence=1,3,4
+```
+
+**"Rate limit exceeded"**
+```
+Cause: > 15 requests/minute from your IP
+Solution: Cache results client-side, wait for the window to reset
+```
+
+**"Request timed out"**
+```
+Cause: Sources took too long to respond
+Solution: Use fast=true, or try with a shorter custom sequence
 ```
 
 ---
 
 ## Best Practices
 
-### 1. Parameter Encoding
-
-Always URL-encode special characters:
+### 1. URL-Encode Parameters
 
 ```bash
-# Good
+# Correct
 curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho"
 
-# Bad (spaces not encoded)
+# Incorrect (spaces break the query)
 curl "http://127.0.0.1:9999/lyrics/?artist=Arijit Singh&song=Tum Hi Ho"
 ```
 
-### 2. Caching Strategy
+### 2. Batch Options into One Request
 
-- Request basic lyrics first, cache result
-- Use fast mode for time-critical requests
-- Store results in your app's cache for 1-2 minutes
-- Clear cache after song updates
+```bash
+# Instead of three separate requests, use one:
+curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&timestamps=true&mood=true&metadata=true&fast=true"
+```
 
-### 3. Error Handling
+### 3. Always Check Status
 
 ```javascript
-// Always check status
 if (response.data.status === 'error') {
   console.error(response.data.error.message);
-  // Handle gracefully
+  // Handle gracefully in your UI
 }
 ```
 
-### 4. Request Optimization
+### 4. Cache Results Client-Side
+
+Store API responses in your app for 1–2 minutes to stay within rate limits and reduce latency.
+
+### 5. Choose Sequences for Your Use Case
 
 ```bash
-# Instead of 3 requests
-curl "...&lyrics..." 
-curl "...&timestamps..."
-curl "...&mood..."
+# Speed-first (parallel, synced only)
+fast=true
 
-# Use 1 request with all options
-curl "...&timestamps=true&mood=true&metadata=true&fast=true"
-```
+# Quality-first (Genius + YouTube)
+pass=true&sequence=1,3
 
-### 5. Rate Limiting
+# Synced lyrics only
+pass=true&sequence=2,3,4,5,6,7
 
-- Implement client-side throttling
-- Cache results aggressively
-- Use custom sequences to reduce fallback attempts
-- Consider Redis for production environments
-
-### 6. Custom Sequences
-
-```bash
-# Fast mode (skip slow sources)
-sequence=3,5,6  # SimpMusic, Lyrics.ovh, ChartLyrics
-
-# Quality mode (prefer detailed sources)
-sequence=1,4,2  # Genius, YouTube Music, LRCLIB
-
-# Timestamped mode (only synced sources)
-sequence=2,4    # LRCLIB, YouTube Music
+# Lightweight / low-bandwidth
+pass=true&sequence=2,4
 ```
 
 ---
 
 ## Code Examples
 
-### JavaScript/Fetch API
+### JavaScript / Fetch API
 
 ```javascript
 async function getLyrics(artist, song, options = {}) {
@@ -789,463 +1018,90 @@ async function getLyrics(artist, song, options = {}) {
     artist,
     song,
     timestamps: options.timestamps || false,
-    mood: options.mood || false,
-    metadata: options.metadata || false,
-    fast: options.fast || false
+    mood:       options.mood       || false,
+    metadata:   options.metadata   || false,
+    fast:       options.fast       || false
   });
 
-  try {
-    const response = await fetch(
-      `http://127.0.0.1:9999/lyrics/?${params}`
-    );
-    const data = await response.json();
+  const response = await fetch(`http://127.0.0.1:9999/lyrics/?${params}`);
+  const data = await response.json();
 
-    if (data.status === 'success') {
-      return {
-        lyrics: data.data.lyrics,
-        source: data.data.source,
-        mood: data.mood_analysis || null,
-        metadata: data.data.metadata || null,
-        timedLyrics: data.data.timed_lyrics || null
-      };
-    } else {
-      throw new Error(data.error.message);
-    }
-  } catch (error) {
-    console.error('Failed to fetch lyrics:', error);
-    throw error;
+  if (data.status === 'success') {
+    return {
+      lyrics:      data.data.lyrics,
+      source:      data.data.source,
+      mood:        data.mood_analysis  || null,
+      metadata:    data.data.metadata  || null,
+      timedLyrics: data.data.timed_lyrics || null
+    };
+  } else {
+    throw new Error(data.error.message);
   }
 }
 
 // Usage
 getLyrics('Arijit Singh', 'Tum Hi Ho', {
-  timestamps: true,
-  mood: true,
-  metadata: true,
-  fast: true
-}).then(lyrics => {
-  console.log(lyrics);
-}).catch(error => {
-  console.error(error);
-});
+  timestamps: true, mood: true, metadata: true, fast: true
+}).then(console.log).catch(console.error);
 ```
 
-### Python/Requests
+### Python / Requests
 
 ```python
 import requests
 
 def get_lyrics(artist, song, **options):
     params = {
-        'artist': artist,
-        'song': song,
+        'artist':     artist,
+        'song':       song,
         'timestamps': options.get('timestamps', False),
-        'mood': options.get('mood', False),
-        'metadata': options.get('metadata', False),
-        'fast': options.get('fast', False)
+        'mood':       options.get('mood', False),
+        'metadata':   options.get('metadata', False),
+        'fast':       options.get('fast', False),
     }
-    
     response = requests.get('http://127.0.0.1:9999/lyrics/', params=params)
     data = response.json()
-    
+
     if data['status'] == 'success':
         return {
-            'lyrics': data['data']['lyrics'],
-            'source': data['data']['source'],
-            'mood': data.get('mood_analysis'),
-            'metadata': data['data'].get('metadata')
+            'lyrics':   data['data']['lyrics'],
+            'source':   data['data']['source'],
+            'mood':     data.get('mood_analysis'),
+            'metadata': data['data'].get('metadata'),
         }
     else:
         raise Exception(data['error']['message'])
 
 # Usage
 try:
-    lyrics = get_lyrics(
-        'Arijit Singh',
-        'Tum Hi Ho',
-        timestamps=True,
-        mood=True,
-        metadata=True,
-        fast=True
-    )
-    print(lyrics)
+    result = get_lyrics('Arijit Singh', 'Tum Hi Ho', timestamps=True, fast=True)
+    print(result)
 except Exception as e:
     print(f"Error: {e}")
+```
+
+### Trending Example (Python)
+
+```python
+import requests
+
+# Get top 10 trending in India
+r = requests.get('http://127.0.0.1:9999/trending/', params={'country': 'IN', 'limit': 10})
+data = r.json()
+for song in data['data']['trending']:
+    print(f"{song.get('rank', '?')}. {song['title']} — {song['artist']}")
 ```
 
 ### cURL
 
 ```bash
 #!/bin/bash
-
 ARTIST="Arijit Singh"
 SONG="Tum Hi Ho"
 API_URL="http://127.0.0.1:9999"
 
 # Fetch with all features
-curl "${API_URL}/lyrics/?artist=$(echo $ARTIST | tr ' ' '%20')&song=$(echo $SONG | tr ' ' '%20')&fast=true&timestamps=true&mood=true&metadata=true" | jq '.'
-```
-
----
-
-## OpenAPI Specification
-
-### Swagger/OpenAPI 3.0 Definition
-
-```yaml
-openapi: 3.0.0
-info:
-  title: Lyrica API
-  version: 1.2.0
-  description: Open-source RESTful API for song lyrics retrieval with mood analysis
-  contact:
-    name: Lyrica Contributors
-    url: https://github.com/Wilooper/Lyrica
-  license:
-    name: MIT
-    url: https://opensource.org/licenses/MIT
-
-servers:
-  - url: http://127.0.0.1:9999
-    description: Local Development
-  - url: https://test-0k.onrender.com
-    description: Production Demo
-
-tags:
-  - name: Lyrics
-    description: Retrieve song lyrics with optional features
-  - name: Metadata
-    description: Song information and metadata
-  - name: JioSaavn
-    description: Indian music platform integration
-  - name: Cache
-    description: Cache management (admin only)
-  - name: Utility
-    description: Utility and status endpoints
-
-paths:
-  /:
-    get:
-      tags:
-        - Utility
-      summary: API Status and Documentation
-      description: Get API version, status, and endpoint summary
-      responses:
-        '200':
-          description: API information
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  api:
-                    type: string
-                  version:
-                    type: string
-                  status:
-                    type: string
-                  endpoints:
-                    type: object
-
-  /lyrics/:
-    get:
-      tags:
-        - Lyrics
-      summary: Fetch Song Lyrics
-      description: Retrieve lyrics from multiple sources with optional timestamps, mood analysis, and metadata
-      parameters:
-        - name: artist
-          in: query
-          required: true
-          schema:
-            type: string
-          example: Arijit Singh
-          description: Artist name
-        - name: song
-          in: query
-          required: true
-          schema:
-            type: string
-          example: Tum Hi Ho
-          description: Song title
-        - name: timestamps
-          in: query
-          schema:
-            type: boolean
-            default: false
-          description: Include synchronized LRC timestamps
-        - name: mood
-          in: query
-          schema:
-            type: boolean
-            default: false
-          description: Include sentiment and word frequency analysis
-        - name: metadata
-          in: query
-          schema:
-            type: boolean
-            default: false
-          description: Include song metadata (cover, duration, genre)
-        - name: fast
-          in: query
-          schema:
-            type: boolean
-            default: false
-          description: Use parallel fetching for faster results
-        - name: pass
-          in: query
-          schema:
-            type: boolean
-            default: false
-          description: Enable custom fetcher sequence
-        - name: sequence
-          in: query
-          schema:
-            type: string
-            example: "1,3,5"
-          description: Custom fetcher IDs (requires pass=true)
-      responses:
-        '200':
-          description: Lyrics retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    enum: [success]
-                  data:
-                    type: object
-                    properties:
-                      source:
-                        type: string
-                      artist:
-                        type: string
-                      title:
-                        type: string
-                      lyrics:
-                        type: string
-                      plain_lyrics:
-                        type: string
-                      timed_lyrics:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            text:
-                              type: string
-                            start_time:
-                              type: integer
-                            end_time:
-                              type: integer
-                            id:
-                              type: integer
-                      hasTimestamps:
-                        type: boolean
-                      metadata:
-                        type: object
-        '400':
-          description: Missing required parameters
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    enum: [error]
-                  error:
-                    type: object
-                    properties:
-                      message:
-                        type: string
-        '404':
-          description: No lyrics found
-        '429':
-          description: Rate limit exceeded
-          headers:
-            Retry-After:
-              schema:
-                type: integer
-              description: Seconds to wait before retrying
-        '500':
-          description: Internal server error
-
-  /metadata/:
-    get:
-      tags:
-        - Metadata
-      summary: Get Song Metadata
-      description: Retrieve song metadata without lyrics
-      parameters:
-        - name: artist
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: song
-          in: query
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Metadata retrieved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                  data:
-                    type: object
-                    properties:
-                      cover_art:
-                        type: string
-                        format: uri
-                      duration:
-                        type: string
-                      genre:
-                        type: string
-                      release_date:
-                        type: string
-                      album:
-                        type: string
-
-  /api/jiosaavn/search:
-    get:
-      tags:
-        - JioSaavn
-      summary: Search Songs on JioSaavn
-      description: Search for songs on JioSaavn music platform
-      parameters:
-        - name: q
-          in: query
-          required: true
-          schema:
-            type: string
-          example: Tum Hi Ho
-          description: Search query
-      responses:
-        '200':
-          description: Search results
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                  results:
-                    type: array
-                    items:
-                      type: object
-
-  /api/jiosaavn/play:
-    get:
-      tags:
-        - JioSaavn
-      summary: Get JioSaavn Stream URL
-      description: Get playable stream URL from JioSaavn
-      parameters:
-        - name: songLink
-          in: query
-          required: true
-          schema:
-            type: string
-          description: Song link from JioSaavn search
-      responses:
-        '200':
-          description: Stream URL retrieved
-          content:
-            application/json:
-              schema:
-                type: object
-
-  /cache/stats:
-    get:
-      tags:
-        - Cache
-      summary: Get Cache Statistics
-      description: Retrieve cache hit/miss ratios and entry counts
-      responses:
-        '200':
-          description: Cache statistics
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                  hits:
-                    type: integer
-                  misses:
-                    type: integer
-                  total_entries:
-                    type: integer
-                  hit_rate:
-                    type: string
-
-  /cache/clear:
-    post:
-      tags:
-        - Cache
-      summary: Clear Cache (Admin)
-      description: Clear all cached lyrics entries (requires admin key)
-      parameters:
-        - name: key
-          in: query
-          schema:
-            type: string
-          description: Admin API key
-      responses:
-        '200':
-          description: Cache cleared successfully
-        '403':
-          description: Unauthorized - invalid admin key
-
-  /app:
-    get:
-      tags:
-        - Utility
-      summary: Web GUI
-      description: Interactive web interface for testing the API
-      responses:
-        '200':
-          description: HTML page served
-
-components:
-  schemas:
-    LyricsResponse:
-      type: object
-      properties:
-        status:
-          type: string
-        data:
-          type: object
-        mood_analysis:
-          type: object
-        timestamp:
-          type: string
-    
-    ErrorResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          enum: [error]
-        error:
-          type: object
-          properties:
-            message:
-              type: string
-            details:
-              type: string
-        timestamp:
-          type: string
+curl "${API_URL}/lyrics/?artist=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$ARTIST'))")&song=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$SONG'))")&fast=true&timestamps=true&mood=true&metadata=true"
 ```
 
 ---
@@ -1257,50 +1113,62 @@ components:
 - [ ] Python 3.12+ installed
 - [ ] Clone repository: `git clone https://github.com/Wilooper/Lyrica.git`
 - [ ] Create virtual environment: `python -m venv venv`
-- [ ] Activate environment: `source venv/bin/activate`
+- [ ] Activate environment: `source venv/bin/activate` (Windows: `venv\Scripts\activate`)
 - [ ] Install dependencies: `pip install -r requirements.txt`
-- [ ] Create `.env` file with API keys
+- [ ] Copy env file: `cp .env.example .env` and fill in values
 - [ ] Run server: `python run.py`
-- [ ] Test API at `http://127.0.0.1:9999`
-- [ ] Access GUI at `http://127.0.0.1:9999/app`
+- [ ] Test API: `curl http://127.0.0.1:9999/`
+- [ ] Access GUI: `http://127.0.0.1:9999/app`
 
 ### Obtaining API Keys
 
-**Genius API Token:**
+**Genius API Token (Optional but recommended for source 1):**
 1. Visit https://genius.com/api-clients
-2. Create account or login
-3. Create new API Client
-4. Copy access token
+2. Create account / log in
+3. Create a new API Client
+4. Copy the Client Access Token
 5. Add to `.env`: `GENIUS_TOKEN=your_token`
 
-**YouTube Music (Optional):**
+**YouTube Music (Optional — for better YouTube source results):**
 ```bash
 pip install ytmusicapi
 ytmusicapi setup
+# Follow prompts → generates headers_auth.json
+# Set YOUTUBE_COOKIE=path/to/headers_auth.json in .env
 ```
+
+**Musixmatch Token (Optional):**
+- Register at https://developer.musixmatch.com/
+- Add `MUSIXMATCH_TOKEN=your_token` to `.env`
 
 ---
 
 ## Frequently Asked Questions
 
 **Q: Is authentication required?**
-A: No for public endpoints. Admin endpoints use an API key.
+A: No — public endpoints work without any key. Only `/cache/clear` (admin) requires `ADMIN_KEY`.
 
 **Q: What's the rate limit?**
-A: 15 requests/minute per IP. Use caching to stay within limits.
+A: 15 requests/minute per IP. Cache results in your app to stay within limits.
 
 **Q: Can I deploy to production?**
-A: Yes! Use Gunicorn, Nginx reverse proxy, and Redis for distributed caching.
+A: Yes. Use Gunicorn (`gunicorn -w 4 -b 0.0.0.0:9999 run:app`) and optionally an Nginx reverse proxy. For high traffic, use the prehosted Hugging Face instance.
 
 **Q: How do I get timestamped lyrics?**
-A: Add `&timestamps=true` to your request (only from LRCLIB and YouTube Music).
+A: Add `&timestamps=true`. Sources 2–7 all support timestamps. Source 1 (Genius) is plain-text only.
 
 **Q: Why is a song not found?**
-A: Try exact spelling, check internet connection, or try a more popular song first.
+A: Try exact spelling, check internet, or use `fast=true` to run more sources in parallel.
 
-**Q: Can I customize which sources are queried?**
-A: Yes! Use `&pass=true&sequence=1,3,5` to control source order.
+**Q: Can I choose which sources are queried?**
+A: Yes — use `&pass=true&sequence=1,3,4` with a comma-separated list of source IDs.
+
+**Q: What happened to Lyrics.ovh, ChartLyrics, and LyricsFreek?**
+A: These APIs are dead as of June 2026 and have been removed from the active source list.
+
+**Q: Can I run the API without a Genius token?**
+A: Yes. Genius (source 1) simply won't load, but all other 6 sources still work.
 
 ---
 
-**Last Updated**: January 15, 2026 | **Version**: 1.2.0
+**Last Updated**: June 24, 2026 | **Version**: 1.2.10

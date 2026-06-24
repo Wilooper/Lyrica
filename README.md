@@ -2,45 +2,48 @@
 
 ![Made in India](https://img.shields.io/badge/Made%20in-India-blue.svg) ![Python](https://img.shields.io/badge/Python-3.12%2B-brightgreen.svg) ![License](https://img.shields.io/badge/License-MIT-yellow.svg) ![Flask](https://img.shields.io/badge/Flask-3.0.0-blue.svg) ![Status](https://img.shields.io/badge/Status-Active-success.svg)
 
-A powerful, open-source RESTful API for retrieving song lyrics with advanced features like mood analysis, timestamped lyrics, metadata extraction, and multi-source aggregation. Built with Python and Flask, optimized for Bollywood and global music queries.
+A powerful, open-source RESTful API for retrieving song lyrics with advanced features like mood analysis, timestamped lyrics, metadata extraction, trending charts, and multi-source aggregation. Built with Python and Flask, optimized for Bollywood and global music queries.
 
-## Before You Start:
-- This is the Flask version. If you want the FastAPI version, then visit:
-
-https://github.com/Wilooper/LyricaV2.git
-- For some time the meaning analyzer is removed due to some problems, so please ignore any reference to song analyzer.
+## Before You Start
+- This is the Flask version. If you want the FastAPI version, visit:
+  https://github.com/Wilooper/LyricaV2.git
 
 ## ✨ Key Features
 
-- **Multi-Source Lyrics Retrieval** - Aggregates from 6 premium sources with intelligent fallback
-- **Timestamped Lyrics (LRC)** - Synchronized lyrics with millisecond precision from YouTube Music and LrcLib
-- **Mood & Sentiment Analysis** - AI-powered sentiment detection and word frequency analysis
-- **Rich Metadata** - Song cover art, duration, genre, release date, and artist info
-- **Smart Caching** - TTL-based caching (5 min default) to reduce external API calls
-- **Rate Limiting** - 15 requests/minute per IP with Redis support for distributed systems
-- **Fast Mode** - Parallel fetching for sub-second response times
-- **CORS-Enabled** - Production-ready for frontend integration
-- **Interactive GUI** - Built-in web interface for testing and exploration
-- **Admin Tools** - Cache management and statistics endpoints
-- **Comprehensive Logging** - Debug and monitor with detailed request/response logs
-- **Made in India** 🇮🇳 - Optimized for Indian music platforms (JioSaavn integration)
-- **Song Meaning** - Now can tell meaning of song and do a full song analysis
+- **Multi-Source Lyrics Retrieval** — Aggregates from 7 active sources with intelligent fallback and validation
+- **Timestamped Lyrics (LRC)** — Synchronized lyrics with millisecond precision from multiple sources
+- **Mood & Sentiment Analysis** — Sentiment detection and word frequency analysis
+- **Rich Metadata** — Song cover art, duration, genre, release date, and artist info
+- **Smart Caching** — TTL-based caching (1 hour default) to reduce external API calls
+- **Rate Limiting** — 15 requests/minute per IP
+- **Fast Mode** — Parallel fetching for sub-second response times
+- **Trending Charts** — Real-time trending songs by country via Apple Music
+- **Analytics** — Top user queries and trending/query intersection insights
+- **Song Suggestions** — Autocomplete via MusicBrainz
+- **CORS-Enabled** — Production-ready for frontend integration
+- **Interactive GUI** — Built-in web interface for testing and exploration
+- **Admin Tools** — Cache management and statistics endpoints
+- **Comprehensive Logging** — Debug and monitor with detailed request/response logs
+- **Made in India** 🇮🇳 — Optimized for Indian music platforms (JioSaavn integration)
 
-## What's New:
-- Added a trending endpoint so you can access top trending content of any country using Apple Music
-- Added a top query endpoint so you can get user top queries in your server
-- Added an AI engine to tell meaning of song and for full song analysis (please refer to [Song_analysis_guide.md](Song_analysis_guide.md) for detailed info)
+## What's New
+- Added `/trending/` endpoint — top trending content for any country via Apple Music
+- Added `/analytics/top-queries/` — see your server's most queried songs
+- Added `/analytics/trending-by-country/`, `/analytics/trending-vs-queries/`, `/analytics/trending-intersection/` — advanced analytics
+- Added `/suggestion` — MusicBrainz-powered song autocomplete
+- Refreshed sources: removed dead APIs (Lyrics.ovh, ChartLyrics, LyricsFreek), added NetEase, Megalobiz, Musixmatch
 
 ## 🎵 Supported Sources
 
-| ID | Source | Lyrics Type | Speed |
+| ID | Source | Lyrics Type | Notes |
 |----|--------|-------------|-------|
-| 1 | Genius | Plain | Medium |
-| 2 | LRCLIB | Timestamped | Slow |
-| 3 | SimpMusic | Plain | Fast |
-| 4 | YouTube Music | Timestamped | Medium |
-| 5 | Lyrics.ovh | Plain | Fast |
-| 6 | ChartLyrics | Plain | Fast |
+| 1 | Genius | Plain | Requires `GENIUS_TOKEN` |
+| 2 | LRCLIB | Timestamped + Plain | Free, very reliable |
+| 3 | YouTube Music | Timestamped + Plain | 3-layer fallback (ytmusicapi → transcript-api → yt-dlp) |
+| 4 | NetEase | Timestamped (LRC) | Via syncedlyrics, large catalog |
+| 5 | Megalobiz | Timestamped (LRC) | Via syncedlyrics, user-contributed |
+| 6 | Musixmatch | Timestamped (LRC) | Via syncedlyrics, optional `MUSIXMATCH_TOKEN` |
+| 7 | SimpMusic | Timestamped + Plain | Via api-lyrics.simpmusic.org |
 
 ## 📦 Installation
 
@@ -48,7 +51,6 @@ https://github.com/Wilooper/LyricaV2.git
 - Python 3.12 or higher
 - pip (Python package manager)
 - Git
-- Redis (optional, for production rate limiting)
 
 ### Quick Start (Local Development)
 
@@ -65,12 +67,8 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # 4. Create .env file
-cat > .env << EOF
-GENIUS_TOKEN=your_genius_api_token
-ADMIN_KEY=your_secure_admin_key
-LOG_LEVEL=INFO
-CACHE_TTL=300
-EOF
+cp .env.example .env
+# Edit .env and fill in your GENIUS_TOKEN
 
 # 5. Run the server
 python run.py
@@ -78,7 +76,7 @@ python run.py
 
 Access the API at: `http://127.0.0.1:9999`
 - Web GUI: `http://127.0.0.1:9999/app`
-- API Docs: `http://127.0.0.1:9999/`
+- API Info: `http://127.0.0.1:9999/`
 
 ### Docker Setup (Optional)
 
@@ -98,30 +96,35 @@ docker run -p 9999:9999 \
 Create a `.env` file in the project root:
 
 ```env
-# Required
+# Required for Genius source
 GENIUS_TOKEN=your_genius_api_token_here
 
-# Optional but recommended
+# Optional
 ADMIN_KEY=your_secure_random_key
 LOG_LEVEL=INFO
-CACHE_TTL=300
-RATE_LIMIT_STORAGE_URI=memory://
+CACHE_TTL=3600
+CACHE_DIR=cache
+
+# Optional: path to YouTube Music headers/cookie file
 YOUTUBE_COOKIE=path/to/headers.json
 
-# Production
-RATE_LIMIT_STORAGE_URI=redis://localhost:6379/0
+# Optional: Musixmatch token (improves results)
+MUSIXMATCH_TOKEN=your_musixmatch_token
 ```
 
 ### Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `GENIUS_TOKEN` | Yes | - | Genius API token from [genius.com/api-clients](https://genius.com/api-clients) |
-| `ADMIN_KEY` | No | - | Secure key for admin endpoints |
-| `LOG_LEVEL` | No | INFO | Logging level (DEBUG, INFO, WARNING, ERROR) |
-| `CACHE_TTL` | No | 300 | Cache time-to-live in seconds |
-| `RATE_LIMIT_STORAGE_URI` | No | memory:// | memory:// or redis://host:port/db |
-| `YOUTUBE_COOKIE` | No | - | Path to YouTube headers.json (rename from ytmusicapi) |
+| `GENIUS_TOKEN` | No* | — | Genius API token — needed for source 1. Get at [genius.com/api-clients](https://genius.com/api-clients) |
+| `ADMIN_KEY` | No | — | Secure key to access admin endpoints (e.g. `/cache/clear`) |
+| `LOG_LEVEL` | No | INFO | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `CACHE_TTL` | No | 3600 | Cache time-to-live in seconds |
+| `CACHE_DIR` | No | cache | Directory for cache files |
+| `YOUTUBE_COOKIE` | No | — | Path to YouTube Music `headers.json` (from ytmusicapi setup) |
+| `MUSIXMATCH_TOKEN` | No | — | Musixmatch API token for improved results |
+
+\* Lyrica still works without `GENIUS_TOKEN` — Genius source simply won't load.
 
 ## 🚀 Deployment
 
@@ -133,32 +136,23 @@ RATE_LIMIT_STORAGE_URI=redis://localhost:6379/0
 5. Add environment variables in dashboard
 6. Deploy
 
-### Heroku
-```bash
-heroku create lyrica-api
-heroku config:set GENIUS_TOKEN=your_token
-git push heroku main
-```
-
 ### Self-Hosted (Gunicorn + Nginx)
 ```bash
-# Install Gunicorn
-pip install gunicorn
-
 # Run with 4 workers
 gunicorn -w 4 -b 127.0.0.1:9999 --timeout 120 run:app
 
-# Configure Nginx as reverse proxy
-# See deployment guides for full setup
+# Configure Nginx as reverse proxy (see deployment guides)
 ```
-## NOTE:
-- If you don't want to self-host or run this project on localhost, you can use the following link to use the prehosted server. All endpoints will be the same as they are on localhost.
-- LINK: https://test-0k.onrender.com/
-- LINK 2: https://wilooper-lyrica.hf.space/
-- The hugging face version(Link 2) is made to handle 1000s of user at same time so if you are planning to add this api in your production then use this as it also has a 95% uptime.
+
+## NOTE
+- If you don't want to self-host, you can use the prehosted server. All endpoints are the same as on localhost.
+- **Link 1**: https://test-0k.onrender.com/
+- **Link 2 (Recommended for production)**: https://wilooper-lyrica.hf.space/
+  - The Hugging Face version is designed to handle thousands of simultaneous users with ~95% uptime.
+
 ## 📚 Quick API Examples
 
-### Basic Lyrics Request
+### Basic Lyrics
 ```bash
 curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho"
 ```
@@ -183,28 +177,36 @@ curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&met
 curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&fast=true&timestamps=true&mood=true&metadata=true"
 ```
 
+### Trending Songs (India)
+```bash
+curl "http://127.0.0.1:9999/trending/?country=IN&limit=10"
+```
+
+### Song Suggestions / Autocomplete
+```bash
+curl "http://127.0.0.1:9999/suggestion?q=Tum%20Hi%20Ho&limit=5"
+```
+
 ## 🛠️ Troubleshooting
 
 ### No Lyrics Found
-- Verify artist and song names are exact
+- Verify artist and song names are correct
 - Check internet connection
-- Review server logs: `tail -f logs/app.log`
-- Try popular songs first
+- Try a popular song first to verify the server is working
+- Use `fast=true` to run sources in parallel for better coverage
 
 ### Genius API Errors
 - Regenerate token at [genius.com/api-clients](https://genius.com/api-clients)
 - Verify token in `.env`
-- Check token hasn't expired
+- The API works without Genius — other sources will be tried
 
-### YouTube Music Auth Issues
-- Run `ytmusicapi setup` in project directory
-- Rename generated `headers.json` to match `YOUTUBE_COOKIE` path
-- Verify file has proper authentication data
+### YouTube Music Issues
+- Run `ytmusicapi setup` in the project directory
+- Set `YOUTUBE_COOKIE` in `.env` to the path of the generated `headers_auth.json`
 
 ### Rate Limit Issues
-- Switch to Redis backend: `RATE_LIMIT_STORAGE_URI=redis://...`
-- Increase rate limit in configuration
-- Wait for 60-second window to reset
+- Wait for the 60-second window to reset
+- Cache results in your application to avoid redundant requests
 
 ### Port Already in Use
 Edit `run.py`:
@@ -215,9 +217,8 @@ if __name__ == '__main__':
 
 ## 📖 Documentation
 
-- **Full API Documentation**: See [USER_GUIDE.md](USER_GUIDE.md)
-- **Swagger/OpenAPI Spec**: Available at `/swagger` endpoint
-- **Examples**: Check `/examples` directory in repository
+- **Full API Reference**: See [USER_GUIDE.md](USER_GUIDE.md)
+- **Setup Details**: See [SETUP_GUIDE.md](SETUP_GUIDE.md)
 - **Issues**: Open GitHub issues for bugs or feature requests
 
 ## 🤝 Contributing
@@ -232,11 +233,10 @@ Contributions are welcome!
 
 Please ensure:
 - Code follows PEP 8 style guide
-- All tests pass
-- Documentation is updated
+- Documentation is updated for any new or changed features
 - Commit messages are descriptive
-- Or you can just suggest changes to be made in the project by opening an issue and I will try to solve the issue ASAP
-- I really want everyone's help so this project can beat every other project, so please help me. If you don't want to code, then just suggest a feature and I will add it.
+
+You can also suggest changes by opening an issue — all suggestions are welcome!
 
 ## 📝 License
 
@@ -246,22 +246,21 @@ See [LICENSE](LICENSE) file for details.
 
 ## 🙏 Special Thanks
 
-- **sigma67** - [ytmusicapi](https://github.com/sigma67/ytmusicapi)
-- **tranxuanthang & LrcLib Team** - LRC lyrics support
-- **maxrave-dev** - Simp Music integration
-- **JioSaavn API** - Music metadata and streaming
+- **sigma67** — [ytmusicapi](https://github.com/sigma67/ytmusicapi)
+- **tranxuanthang & LrcLib Team** — LRC lyrics support
+- **maxrave-dev** — SimpMusic integration
+- **JioSaavn** — Music metadata and streaming
+- **syncedlyrics** — NetEase, Megalobiz, Musixmatch integration
+- **MusicBrainz** — Song suggestion/autocomplete data
 
 ## 📞 Support
 
 - **Documentation**: [USER_GUIDE.md](USER_GUIDE.md)
-- **Song meaning analysis**: [Song_analysis_guide.md](Song_analysis_guide.md)
 - **Issues**: [GitHub Issues](https://github.com/Wilooper/Lyrica/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/Wilooper/Lyrica/discussions)
 - **Email**: thinkelyorg@gmail.com
 
 ---
-**Previous Update & Version**: Feb 16, 2026 & version: 1.2.0
-
-**Latest Updated On**: June 22, 2026 | **Version**: 1.2.10
+**Latest Updated On**: June 24, 2026 | **Version**: 1.2.10
 
 Made with ❤️ in India 🇮🇳

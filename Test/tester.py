@@ -7,9 +7,9 @@ HTML debug report showing pass/fail status, response times, and
 detailed diagnostics.
 
 Usage:
-    python lyrica_tester.py
-    python lyrica_tester.py --base-url https://your-service.onrender.com
-    python lyrica_tester.py --admin-key YOUR_KEY --output my_report.html
+    python tester.py
+    python tester.py --base-url https://your-service.onrender.com
+    python tester.py --admin-key YOUR_KEY --output my_report.html
 
 Requirements:
     pip install requests
@@ -38,6 +38,7 @@ TEST_ARTIST  = "karan aujla"
 TEST_SONG    = "softly"
 TEST_COUNTRY = "US"
 TEST_JIOSAAVN_QUERY = "Kesariya"
+TEST_SUGGESTION_QUERY = "Imagine"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -210,6 +211,19 @@ class LyricaTester:
             checks.append({"label": "Reachable", "ok": False, "detail": err})
         self._record("404 Handler  GET /nonexistent", "/nonexistent", "GET", r, ms, checks, err)
 
+    def test_app_page(self):
+        r, ms, err = self._get("/app")
+        checks = []
+        if r is not None:
+            checks.append({"label": "HTTP 200", "ok": r.status_code == 200, "detail": f"Got {r.status_code}"})
+            is_html = "text/html" in r.headers.get("Content-Type", "")
+            checks.append({"label": "Content-Type is HTML", "ok": is_html, "detail": r.headers.get("Content-Type", "not set")})
+        else:
+            checks.append({"label": "Reachable", "ok": False, "detail": err})
+        self._record("App Page  GET /app", "/app", "GET", r, ms, checks, err)
+
+    # ── Lyrics ────────────────────────────────────────────────────────────────
+
     def test_lyrics_basic(self):
         print("\n── Lyrics ──────────────────────────────────")
         r, ms, err = self._get("/lyrics/", {"artist": TEST_ARTIST, "song": TEST_SONG})
@@ -349,6 +363,23 @@ class LyricaTester:
             checks.append({"label": "Reachable", "ok": False, "detail": err})
         self._record("Lyrics Custom Sequence  pass=true&sequence=2,3", "/lyrics/", "GET", r, ms, checks, err)
 
+    def test_lyrics_pass_without_sequence(self):
+        """Confirms pass=true without sequence= returns 400."""
+        r, ms, err = self._get("/lyrics/", {
+            "artist": TEST_ARTIST, "song": TEST_SONG, "pass": "true"
+        })
+        checks = []
+        if r is not None:
+            checks.append({"label": "HTTP 400", "ok": r.status_code == 400, "detail": f"Got {r.status_code}"})
+            try:
+                j = r.json()
+                checks.append({"label": "Returns error body", "ok": j.get("status") == "error", "detail": str(j.get("error", {}).get("message", ""))[:80]})
+            except Exception:
+                checks.append({"label": "Returns JSON", "ok": False, "detail": "Not valid JSON"})
+        else:
+            checks.append({"label": "Reachable", "ok": False, "detail": err})
+        self._record("Lyrics pass=true Without sequence  (expects 400)", "/lyrics/", "GET", r, ms, checks, err)
+
     def test_lyrics_cache_hit(self):
         """Cache hit test: pre-warm with a request, then confirm the second is dramatically faster."""
         # Request 1 — may or may not hit cache (depends on prior tests)
@@ -378,6 +409,8 @@ class LyricaTester:
             checks.append({"label": "Reachable", "ok": False, "detail": err})
         self._record("Lyrics Cache Hit  (2nd request should be <1000ms)", "/lyrics/", "GET", r2, ms2, checks, err)
 
+    # ── Metadata ──────────────────────────────────────────────────────────────
+
     def test_metadata(self):
         print("\n── Metadata ────────────────────────────────")
         r, ms, err = self._get("/metadata/", {"artist": TEST_ARTIST, "song": TEST_SONG})
@@ -406,6 +439,64 @@ class LyricaTester:
         else:
             checks.append({"label": "Reachable", "ok": False, "detail": err})
         self._record("Metadata Missing Params  (expects 400)", "/metadata/", "GET", r, ms, checks, err)
+
+    # ── Suggestion ────────────────────────────────────────────────────────────
+
+    def test_suggestion(self):
+        print("\n── Suggestion ──────────────────────────────")
+        r, ms, err = self._get("/suggestion", {"q": TEST_SUGGESTION_QUERY, "limit": 5})
+        checks = []
+        if r is not None:
+            checks.append({"label": "HTTP 200", "ok": r.status_code == 200, "detail": f"Got {r.status_code}"})
+            try:
+                j = r.json()
+                checks.append({"label": "status == success", "ok": j.get("status") == "success", "detail": str(j.get("status"))})
+                results = j.get("results", [])
+                checks.append({"label": "results list present", "ok": isinstance(results, list), "detail": f"{len(results)} results"})
+                checks.append({"label": "Has results", "ok": len(results) > 0, "detail": f"{len(results)} songs returned"})
+                if results:
+                    s = results[0]
+                    checks.append({"label": "Each result has 'title'", "ok": bool(s.get("title")), "detail": str(s.get("title"))})
+                    checks.append({"label": "Each result has 'artist'", "ok": bool(s.get("artist")), "detail": str(s.get("artist"))})
+                checks.append({"label": "Has 'query' echo", "ok": j.get("query") == TEST_SUGGESTION_QUERY, "detail": str(j.get("query"))})
+                checks.append({"label": "Has 'total' count", "ok": "total" in j, "detail": str(j.get("total"))})
+            except Exception:
+                checks.append({"label": "Returns JSON", "ok": False, "detail": "Not valid JSON"})
+        else:
+            checks.append({"label": "Reachable", "ok": False, "detail": err})
+        self._record(f"Suggestion  GET /suggestion?q={TEST_SUGGESTION_QUERY}", "/suggestion", "GET", r, ms, checks, err)
+
+    def test_suggestion_missing_query(self):
+        r, ms, err = self._get("/suggestion", {})
+        checks = []
+        if r is not None:
+            checks.append({"label": "HTTP 400", "ok": r.status_code == 400, "detail": f"Got {r.status_code}"})
+            try:
+                j = r.json()
+                checks.append({"label": "Returns error body", "ok": j.get("status") == "error", "detail": str(j.get("error", {}).get("message", ""))[:80]})
+            except Exception:
+                checks.append({"label": "Returns JSON", "ok": False, "detail": "Not valid JSON"})
+        else:
+            checks.append({"label": "Reachable", "ok": False, "detail": err})
+        self._record("Suggestion Missing Query  (expects 400)", "/suggestion", "GET", r, ms, checks, err)
+
+    def test_suggestion_limit(self):
+        """Verify the limit parameter is respected."""
+        r, ms, err = self._get("/suggestion", {"q": TEST_SUGGESTION_QUERY, "limit": 3})
+        checks = []
+        if r is not None:
+            checks.append({"label": "HTTP 200", "ok": r.status_code == 200, "detail": f"Got {r.status_code}"})
+            try:
+                j = r.json()
+                results = j.get("results", [])
+                checks.append({"label": "results ≤ limit (3)", "ok": len(results) <= 3, "detail": f"{len(results)} returned"})
+            except Exception:
+                checks.append({"label": "Returns JSON", "ok": False, "detail": "Not valid JSON"})
+        else:
+            checks.append({"label": "Reachable", "ok": False, "detail": err})
+        self._record("Suggestion Limit  GET /suggestion?q=...&limit=3", "/suggestion", "GET", r, ms, checks, err)
+
+    # ── Trending ──────────────────────────────────────────────────────────────
 
     def test_trending(self):
         print("\n── Trending ────────────────────────────────")
@@ -460,6 +551,8 @@ class LyricaTester:
         else:
             checks.append({"label": "Reachable", "ok": False, "detail": err})
         self._record("Trending Invalid Country  (expects 400)", "/trending/", "GET", r, ms, checks, err)
+
+    # ── Analytics ─────────────────────────────────────────────────────────────
 
     def test_analytics_top_queries(self):
         print("\n── Analytics ───────────────────────────────")
@@ -540,6 +633,8 @@ class LyricaTester:
         else:
             checks.append({"label": "Reachable", "ok": False, "detail": err})
         self._record(f"Analytics Trending Intersection  ?country={TEST_COUNTRY}", "/analytics/trending-intersection/", "GET", r, ms, checks, err)
+
+    # ── JioSaavn ──────────────────────────────────────────────────────────────
 
     def test_jiosaavn_search(self):
         print("\n── JioSaavn ────────────────────────────────")
@@ -624,6 +719,8 @@ class LyricaTester:
             checks.append({"label": "Reachable", "ok": False, "detail": err})
         self._record("JioSaavn Play Missing Param  (expects 400)", "/api/jiosaavn/play", "GET", r, ms, checks, err)
 
+    # ── Cache & Admin ─────────────────────────────────────────────────────────
+
     def test_cache_stats(self):
         print("\n── Cache & Admin ───────────────────────────")
         r, ms, err = self._get("/cache/stats")
@@ -641,34 +738,6 @@ class LyricaTester:
             checks.append({"label": "Reachable", "ok": False, "detail": err})
         self._record("Cache Stats  GET /cache/stats", "/cache/stats", "GET", r, ms, checks, err)
 
-    def test_admin_cache_stats(self):
-        if not self.admin:
-            self.results.append(TestResult(
-                name="Admin Cache Stats  GET /admin/cache/stats",
-                endpoint="/admin/cache/stats",
-                method="GET",
-                status=Status.SKIP,
-                status_code=None,
-                response_ms=0,
-                checks=[{"label": "ADMIN_KEY required", "ok": False, "detail": "Pass --admin-key to enable this test"}],
-                error="No ADMIN_KEY provided",
-            ))
-            print("  ⏭️  [SKIP] Admin Cache Stats  (no --admin-key)")
-            return
-
-        r, ms, err = self._get("/admin/cache/stats", {"key": self.admin})
-        checks = []
-        if r is not None:
-            checks.append({"label": "HTTP 200", "ok": r.status_code == 200, "detail": f"Got {r.status_code}"})
-            try:
-                j = r.json()
-                checks.append({"label": "Has files list", "ok": "files" in j or "cache_files" in j, "detail": ""})
-            except Exception:
-                checks.append({"label": "Returns JSON", "ok": False, "detail": "Not valid JSON"})
-        else:
-            checks.append({"label": "Reachable", "ok": False, "detail": err})
-        self._record("Admin Cache Stats  GET /admin/cache/stats", "/admin/cache/stats", "GET", r, ms, checks, err)
-
     def test_cache_clear_unauthorized(self):
         """Confirm /cache/clear rejects requests without admin key."""
         r, ms, err = self._post("/cache/clear")
@@ -679,18 +748,51 @@ class LyricaTester:
             checks.append({"label": "Reachable", "ok": False, "detail": err})
         self._record("Cache Clear Unauthorized  POST /cache/clear (expects 403)", "/cache/clear", "POST", r, ms, checks, err)
 
-    def test_admin_unauthorized(self):
-        """Confirm /admin/* rejects bad keys."""
-        r, ms, err = self._get("/admin/cache/stats", {"key": "WRONG_KEY_xyz"})
+    def test_cache_clear_authorized(self):
+        """Confirm /cache/clear accepts a valid admin key (skip if no key provided)."""
+        if not self.admin:
+            self.results.append(TestResult(
+                name="Cache Clear Authorized  POST /cache/clear",
+                endpoint="/cache/clear",
+                method="POST",
+                status=Status.SKIP,
+                status_code=None,
+                response_ms=0,
+                checks=[{"label": "ADMIN_KEY required", "ok": False, "detail": "Pass --admin-key to enable this test"}],
+                error="No ADMIN_KEY provided",
+            ))
+            print("  ⏭️  [SKIP] Cache Clear Authorized  (no --admin-key)")
+            return
+
+        r, ms, err = self._post("/cache/clear", {"key": self.admin})
+        checks = []
+        if r is not None:
+            checks.append({"label": "HTTP 200", "ok": r.status_code == 200, "detail": f"Got {r.status_code}"})
+            try:
+                j = r.json()
+                checks.append({"label": "status == success", "ok": j.get("status") == "success", "detail": str(j.get("status"))})
+                checks.append({"label": "details field present", "ok": "details" in j, "detail": str(j.get("details", ""))[:60]})
+            except Exception:
+                checks.append({"label": "Returns JSON", "ok": False, "detail": "Not valid JSON"})
+        else:
+            checks.append({"label": "Reachable", "ok": False, "detail": err})
+        self._record("Cache Clear Authorized  POST /cache/clear", "/cache/clear", "POST", r, ms, checks, err)
+
+    def test_cache_clear_wrong_key(self):
+        """Confirm /cache/clear rejects a wrong admin key."""
+        r, ms, err = self._post("/cache/clear", {"key": "WRONG_KEY_xyz"})
         checks = []
         if r is not None:
             checks.append({"label": "Rejected with wrong key (HTTP 403)", "ok": r.status_code == 403, "detail": f"Got {r.status_code}"})
         else:
             checks.append({"label": "Reachable", "ok": False, "detail": err})
-        self._record("Admin Route Wrong Key  GET /admin/cache/stats?key=WRONG (expects 403)", "/admin/cache/stats", "GET", r, ms, checks, err)
+        self._record("Cache Clear Wrong Key  POST /cache/clear?key=WRONG (expects 403)", "/cache/clear", "POST", r, ms, checks, err)
+
+    # ── Security ──────────────────────────────────────────────────────────────
 
     def test_rate_limit_header(self):
         """Check that rate limit headers are present on responses."""
+        print("\n── Security ────────────────────────────────")
         r, ms, err = self._get("/lyrics/", {"artist": TEST_ARTIST, "song": TEST_SONG})
         checks = []
         if r is not None:
@@ -734,10 +836,13 @@ class LyricaTester:
         print(f"  Started  : {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
         print(f"{'='*60}")
 
+        # ── Core ──
         self.test_health()
         self.test_favicon()
         self.test_404()
+        self.test_app_page()
 
+        # ── Lyrics ──
         self.test_lyrics_basic()
         self.test_lyrics_timestamps()
         self.test_lyrics_fast_mode()
@@ -746,37 +851,50 @@ class LyricaTester:
         self.test_lyrics_all_params()
         self.test_lyrics_missing_params()
         self.test_lyrics_custom_sequence()
+        self.test_lyrics_pass_without_sequence()
         self.test_lyrics_cache_hit()
 
+        # ── Metadata ──
         self.test_metadata()
         self.test_metadata_missing()
 
+        # ── Suggestion ──
+        self.test_suggestion()
+        self.test_suggestion_missing_query()
+        self.test_suggestion_limit()
+
+        # ── Trending ──
         self.test_trending()
         self.test_trending_multi()
         self.test_trending_invalid_country()
 
+        # ── Analytics ──
         self.test_analytics_top_queries()
         self.test_analytics_by_country()
         self.test_analytics_trending_by_country()
         self.test_analytics_trending_vs_queries()
         self.test_analytics_trending_intersection()
 
+        # ── JioSaavn ──
         self.test_jiosaavn_search()
         self.test_jiosaavn_search_missing()
         self.test_jiosaavn_play()
         self.test_jiosaavn_play_missing()
 
+        # ── Cache & Admin ──
         self.test_cache_stats()
-        self.test_admin_cache_stats()
         self.test_cache_clear_unauthorized()
-        self.test_admin_unauthorized()
+        self.test_cache_clear_authorized()
+        self.test_cache_clear_wrong_key()
+
+        # ── Security ──
         self.test_rate_limit_header()
         self.test_gzip()
 
-        total  = len(self.results)
-        passed = sum(1 for r in self.results if r.status == Status.PASS)
-        failed = sum(1 for r in self.results if r.status == Status.FAIL)
-        warned = sum(1 for r in self.results if r.status == Status.WARN)
+        total   = len(self.results)
+        passed  = sum(1 for r in self.results if r.status == Status.PASS)
+        failed  = sum(1 for r in self.results if r.status == Status.FAIL)
+        warned  = sum(1 for r in self.results if r.status == Status.WARN)
         skipped = sum(1 for r in self.results if r.status == Status.SKIP)
 
         print(f"\n{'='*60}")
@@ -1101,9 +1219,9 @@ def generate_html_report(results: list[TestResult], base_url: str, output_path: 
 # ENTRY POINT
 # ─────────────────────────────────────────────────────────────────────────────
 def main():
-    parser = argparse.ArgumentParser(description="Lyrica API endpoint tester")
+    parser = argparse.ArgumentParser(description="Lyrica API endpoint tester — runs ALL tests in one script")
     parser.add_argument("--base-url",  default=DEFAULT_BASE_URL,  help="API base URL")
-    parser.add_argument("--admin-key", default=DEFAULT_ADMIN_KEY, help="Admin key for protected endpoints")
+    parser.add_argument("--admin-key", default=DEFAULT_ADMIN_KEY, help="Admin key for protected endpoints (cache clear)")
     parser.add_argument("--output",    default=REPORT_FILE,        help="Output HTML report filename")
     args = parser.parse_args()
 
