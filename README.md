@@ -244,6 +244,10 @@ You can also suggest changes by opening an issue — all suggestions are welcome
 MIT License © 2025 Lyrica Contributors
 
 See [LICENSE](LICENSE) file for details.
+## Contributors
+
+<!-- readme: contributors -start -->
+<!-- readme: contributors -end -->
 
 ## 🙏 Special Thanks
 
