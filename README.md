@@ -149,8 +149,7 @@ gunicorn -w 4 -b 127.0.0.1:9999 --timeout 120 run:app
 - **Link 1**: https://test-0k.onrender.com/
 - **Link 2 (Recommended for production)**: https://wilooper-lyrica.hf.space/
   - The Hugging Face version is designed to handle thousands of simultaneous users with ~95% uptime.
-  - we are high on usages due to which yt and some other sources are blocking my server ip rapidly currently i am using proxy which just drops the api performace so hugging face is still on the old version but i am constantly trying to fix things for that time use render one the hugging face version still keeps working just new sources will not work thanks!
-
+  
 ## 📚 Quick API Examples
 
 ### Basic Lyrics
