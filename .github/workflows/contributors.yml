@@ -1,0 +1,28 @@
+name: Update Contributors
+
+on:
+  push:
+    branches:
+      - main  # Triggers when a PR is merged into main (which counts as a push)
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  contrib-readme-job:
+    runs-on: ubuntu-latest
+    name: Auto-update Contributors in README
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Update Contributor List
+        uses: akhilmhdh/contributors-readme-action@v2.3.11
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          image_size: 100
+          columns_per_row: 6
+          commit_message: "docs(contributors): update contributors in README [skip ci]"
