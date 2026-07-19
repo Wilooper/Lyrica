@@ -5,6 +5,9 @@ import asyncio
 import logging
 import httpx as _httpx
 
+from src.proxy_manager import get_proxy_manager
+from src.user_config import get_user_config, reload_user_config
+
 from src.logger import get_logger
 from src.cache import make_cache_key, load_from_cache, save_to_cache, clear_cache, cache_stats
 from src.fetch_controller import fetch_lyrics_controller
@@ -12,6 +15,7 @@ from src.sentiment_analyzer import analyze_sentiment, analyze_word_frequency, ex
 from src.metadata_extractor import enhance_lyrics_with_metadata, get_metadata_only
 from src.sources.jiosaavan_fetcher import search_jiosaavn, get_jiosaavn_stream
 from src.trending_analytics import TrendingAnalyticsEngine, Country
+from src import __version__
 from src.config import ADMIN_KEY
 
 logger = get_logger("router")
@@ -19,21 +23,32 @@ logger = get_logger("router")
 # Initialize Trending Analytics Engine (global instance)
 trending_engine = TrendingAnalyticsEngine(cache_ttl_hours=24)
 
-# Helper function to run async functions in sync context
 def run_async(coro, timeout=30):
     """Run async coroutine safely in sync context with timeout"""
     try:
-        loop = asyncio.get_event_loop()
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
         if loop.is_running():
             import nest_asyncio
             nest_asyncio.apply()
-            return asyncio.run(coro)
+            return loop.run_until_complete(asyncio.wait_for(coro, timeout=timeout))
         return loop.run_until_complete(asyncio.wait_for(coro, timeout=timeout))
     except asyncio.TimeoutError:
         logger.error("Async operation timed out")
         raise Exception("Request timed out - operation took too long")
-    except RuntimeError:
-        return asyncio.run(asyncio.wait_for(coro, timeout=timeout))
+    except Exception:
+        # Fallback to new event loop on closed loop or other RuntimeError
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            return loop.run_until_complete(asyncio.wait_for(coro, timeout=timeout))
+        except Exception as e:
+            logger.error(f"Fallback run_async failed: {e}")
+            raise
 
 
 def register_routes(app):
@@ -43,7 +58,7 @@ def register_routes(app):
         return jsonify(
             {
                 "api": "Lyrica",
-                "version": app.config.get("VERSION", "1.0.0"),
+                "version": app.config.get("VERSION", __version__),
                 "status": "active",
                 "description": "A comprehensive lyrics API with mood analysis, metadata extraction, and trending insights",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -220,18 +235,28 @@ def register_routes(app):
     @app.route("/lyrics/", methods=["GET"])
     def lyrics():
         """Fetch lyrics with optional mood analysis and metadata"""
+        # ── Load config defaults (query params always win) ────────────────
+        try:
+            cfg = get_user_config()
+        except Exception:
+            cfg = None
+
         artist = request.args.get("artist", "").strip()
         song = request.args.get("song", "").strip()
         country = request.args.get("country", "US").strip().upper()
+
+        # Apply config defaults when query param not explicitly supplied
+        _ts_default = (cfg.default_timestamps if cfg else False)
         timestamps = (
-            request.args.get("timestamps", "false").lower() == "true"
-            or request.args.get("timestamp", "false").lower() == "true"
+            request.args.get("timestamps", str(_ts_default)).lower() == "true"
+            or request.args.get("timestamp",  str(_ts_default)).lower() == "true"
         )
         pass_param = request.args.get("pass", "false").lower() == "true"
-        sequence = request.args.get("sequence", None)
-        fast_mode = request.args.get("fast", "false").lower() == "true"
-        analyze_mood = request.args.get("mood", "false").lower() == "true"
-        include_metadata = request.args.get("metadata", "false").lower() == "true"
+        sequence   = request.args.get("sequence", cfg.default_sequence if cfg else None)
+        fast_mode  = request.args.get("fast",  str(cfg.default_fast     if cfg else False)).lower() == "true"
+        analyze_mood      = request.args.get("mood",     str(cfg.default_mood     if cfg else False)).lower() == "true"
+        include_metadata  = request.args.get("metadata", str(cfg.default_metadata if cfg else False)).lower() == "true"
+        _fast_timeout = cfg.fast_timeout if cfg else 20
 
         if not artist or not song:
             return (
@@ -289,6 +314,7 @@ def register_routes(app):
                     pass_param=pass_param,
                     sequence=sequence,
                     fast_mode=fast_mode,
+                    fast_timeout=_fast_timeout,
                 ),
                 timeout=60
             )
@@ -945,6 +971,135 @@ def register_routes(app):
     def favicon():
         """Favicon endpoint"""
         return "", 204
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # NEW: Health check
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @app.route("/health", methods=["GET"])
+    def health():
+        """Lightweight health check — returns 200 OK with version info"""
+        return jsonify({
+            "status":    "ok",
+            "version":   app.config.get("VERSION", __version__),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # NEW: Proxy management endpoints (admin-key protected)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _admin_check():
+        """Return (True, None) if admin key is valid, else (False, response)."""
+        from src.config import ADMIN_KEY
+        key = request.args.get("key") or request.headers.get("X-ADMIN-KEY")
+        if not ADMIN_KEY or key != ADMIN_KEY:
+            return False, (jsonify({"status": "error", "error": {"message": "Unauthorized — admin key required"}}), 403)
+        return True, None
+
+    @app.route("/v2/proxy/set", methods=["POST"])
+    def proxy_set():
+        """Add a proxy to the pool (admin-key protected)"""
+        ok, err = _admin_check()
+        if not ok:
+            return err
+
+        body = request.get_json(silent=True) or {}
+        proxy_url = (body.get("proxy") or request.args.get("proxy", "")).strip()
+
+        if not proxy_url:
+            return jsonify({"status": "error", "error": {"message": "`proxy` field is required"}}), 400
+
+        added = get_proxy_manager().add(proxy_url)
+        return jsonify({
+            "status":  "success" if added else "skipped",
+            "message": "Proxy added" if added else "Proxy already in pool or invalid",
+            "pool_size": get_proxy_manager().size(),
+        })
+
+    @app.route("/v2/proxy/remove", methods=["DELETE", "POST"])
+    def proxy_remove():
+        """Remove a proxy from the pool by URL (admin-key protected)"""
+        ok, err = _admin_check()
+        if not ok:
+            return err
+
+        body = request.get_json(silent=True) or {}
+        proxy_url = (body.get("proxy") or request.args.get("proxy", "")).strip()
+
+        if not proxy_url:
+            return jsonify({"status": "error", "error": {"message": "`proxy` field is required"}}), 400
+
+        removed = get_proxy_manager().remove(proxy_url)
+        return jsonify({
+            "status":  "success" if removed else "not_found",
+            "message": "Proxy removed" if removed else "Proxy not found in pool",
+            "pool_size": get_proxy_manager().size(),
+        })
+
+    @app.route("/v2/proxy/list", methods=["GET"])
+    def proxy_list():
+        """List all proxies with masked credentials (admin-key protected)"""
+        ok, err = _admin_check()
+        if not ok:
+            return err
+
+        return jsonify({
+            "status":  "success",
+            "pool_size": get_proxy_manager().size(),
+            "proxies": get_proxy_manager().list_masked(),
+        })
+
+    @app.route("/v2/proxy/clear", methods=["POST"])
+    def proxy_clear():
+        """Remove all proxies from the pool (admin-key protected)"""
+        ok, err = _admin_check()
+        if not ok:
+            return err
+
+        count = get_proxy_manager().clear()
+        return jsonify({
+            "status":  "success",
+            "message": f"{count} proxies removed",
+            "pool_size": 0,
+        })
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # NEW: Config management endpoints
+    # ─────────────────────────────────────────────────────────────────────────
+
+    @app.route("/config/status", methods=["GET"])
+    def config_status():
+        """Show currently loaded config file and effective settings"""
+        try:
+            cfg = get_user_config()
+            return jsonify({
+                "status": "success",
+                "config": cfg.to_dict(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception as e:
+            logger.error(f"Config status error: {e}")
+            return jsonify({"status": "error", "error": {"message": str(e)}}), 500
+
+    @app.route("/config/reload", methods=["POST"])
+    def config_reload():
+        """Force config file reload without restarting the server (admin-key protected)"""
+        ok, err = _admin_check()
+        if not ok:
+            return err
+
+        try:
+            cfg = reload_user_config()
+            return jsonify({
+                "status":  "success",
+                "message": "Config reloaded",
+                "config":  cfg.to_dict(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception as e:
+            logger.error(f"Config reload error: {e}")
+            return jsonify({"status": "error", "error": {"message": str(e)}}), 500
 
     @app.errorhandler(404)
     def not_found(error):

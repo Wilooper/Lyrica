@@ -34,9 +34,18 @@ class MusixmatchFetcher(BaseFetcher):
         if self._token:
             logger.info("Musixmatch: using authenticated token from env")
         else:
-            logger.info("Musixmatch: no token set, using unauthenticated mode")
+            logger.warning(
+                "Musixmatch: MUSIXMATCH_TOKEN not set. "
+                "Unauthenticated mode returns 401 errors — this source will be skipped. "
+                "Set MUSIXMATCH_TOKEN to enable it."
+            )
 
     async def fetch(self, artist: str, song: str, timestamps: bool = False):
+        if not self._token:
+            # Unauthenticated Musixmatch returns 401 — skip to avoid error spam
+            logger.debug("Musixmatch: skipped (no MUSIXMATCH_TOKEN set)")
+            return None
+
         query = f"{song} {artist}"
         loop = asyncio.get_event_loop()
 

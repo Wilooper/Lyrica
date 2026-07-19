@@ -36,7 +36,7 @@ yt-dlp==2024.5.27            # YouTube fallback / audio info + subtitle extracti
 youtube-transcript-api==1.2.4 # YouTube caption/transcript fetcher (Layer 2 of YouTube source)
 syncedlyrics==1.0.1          # Synced LRC lyrics: NetEase, Megalobiz, Musixmatch providers
 beautifulsoup4==4.12.3       # HTML scraping (LyricsFreek, Last.fm)
-lxml==5.2.2                  # faster BS4 parser
+lxml==5.4.0                  # faster BS4 parser
 
 # ── NLP / sentiment ──────────────────────────────────────────
 textblob==0.18.0             # sentiment analysis on lyrics

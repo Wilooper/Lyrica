@@ -1,24 +1,31 @@
 # gunicorn.conf.py
-# Render free tier: 512MB RAM, 1 vCPU
-# Start command: gunicorn -c gunicorn.conf.py run:app
+# Production-ready Gunicorn config for Lyrica
+# Start command: gunicorn -c gunicorn.config.py run:app
 
 import multiprocessing
 import os
 
-# 2 workers is safe for 512MB RAM
-# Formula: (2 * CPU cores) + 1, capped at 2 for free tier
-workers = int(os.getenv("WEB_CONCURRENCY", 2))
+# Workers formula: (2 * CPU) + 1 is a common heuristic.
+# Cap at 4 for free-tier hosts (512MB RAM). WEB_CONCURRENCY overrides.
+_cpu = multiprocessing.cpu_count()
+workers = int(os.getenv("WEB_CONCURRENCY", min((_cpu * 2) + 1, 4)))
 
-# Use gevent worker for async-friendly concurrency (optional, requires: pip install gevent)
-# worker_class = "gevent"
-worker_class = "sync"
+# gevent gives us async-friendly concurrency within each worker.
+# Each worker handles many requests concurrently via green threads.
+# Falls back to 'sync' if gevent is not installed (e.g. on Windows without C++ build tools).
+try:
+    import gevent  # noqa: F401
+    worker_class = os.getenv("GUNICORN_WORKER_CLASS", "gevent")
+except ImportError:
+    worker_class = os.getenv("GUNICORN_WORKER_CLASS", "sync")
+worker_connections = 1000   # max simultaneous connections per gevent worker
 
-bind = f"0.0.0.0:{os.getenv('PORT', '9999')}"
-timeout = 120          # Allow up to 120s for slow external APIs
-keepalive = 5
-max_requests = 1000    # Restart workers after 1000 requests to prevent memory leaks
+bind        = f"0.0.0.0:{os.getenv('PORT', '9999')}"
+timeout     = 120          # Allow up to 120s for slow external APIs
+keepalive   = 5
+max_requests        = 1000    # Restart workers after 1000 requests (memory leak prevention)
 max_requests_jitter = 100
-preload_app = True     # Load app once, fork workers — saves RAM
-accesslog = "-"        # Log to stdout (Render captures this)
-errorlog = "-"
-loglevel = os.getenv("LOG_LEVEL", "info").lower()
+preload_app = True           # Load app once, fork workers — saves RAM
+accesslog   = "-"            # Log to stdout
+errorlog    = "-"
+loglevel    = os.getenv("LOG_LEVEL", "info").lower()

@@ -16,8 +16,11 @@
    - [JioSaavn Play](#10-jiosaavn-play)
    - [Cache Statistics](#11-cache-statistics)
    - [Cache Clear (Admin)](#12-cache-clear-admin)
-   - [Web GUI](#13-web-gui)
-   - [API Info](#14-api-info)
+   - [Health Check](#13-health-check)
+   - [Proxy Rotation Pools (Admin)](#14-proxy-rotation-pools-admin)
+   - [Configuration Management (Admin)](#15-configuration-management-admin)
+   - [Web GUI](#16-web-gui)
+   - [API Info](#17-api-info)
 3. [Core Features](#core-features)
 4. [Source Reference](#source-reference)
 5. [Response Formats](#response-formats)
@@ -743,7 +746,138 @@ curl -X POST http://127.0.0.1:9999/cache/clear \
 
 ---
 
-### 13. Web GUI
+### 13. Health Check
+
+**Monitor the API status, loaded version, and system timestamp**
+
+```
+GET /health
+```
+
+#### Example Request
+```bash
+curl "http://127.0.0.1:9999/health"
+```
+
+#### Response
+```json
+{
+  "status": "ok",
+  "version": "1.3.0",
+  "timestamp": "2026-07-19T16:20:00+00:00"
+}
+```
+
+---
+
+### 14. Proxy Rotation Pools (Admin)
+
+**Manage the active round-robin proxy pool — requires `ADMIN_KEY`**
+
+#### 14.1 Add Proxy
+```
+POST /v2/proxy/set
+```
+**JSON body or Query parameters:**
+- `proxy`: Proxy connection string (e.g. `http://user:pass@host:port` or `socks5://host:port`)
+- `key` (or header `X-ADMIN-KEY`): Admin key
+
+**Example:**
+```bash
+curl -X POST "http://127.0.0.1:9999/v2/proxy/set?key=your_admin_key" \
+  -H "Content-Type: application/json" \
+  -d '{"proxy": "http://myproxy.com:8080"}'
+```
+
+#### 14.2 Remove Proxy
+```
+DELETE /v2/proxy/remove
+```
+**JSON body or Query parameters:**
+- `proxy`: The proxy string to remove
+
+**Example:**
+```bash
+curl -X DELETE "http://127.0.0.1:9999/v2/proxy/remove?key=your_admin_key" \
+  -H "Content-Type: application/json" \
+  -d '{"proxy": "http://myproxy.com:8080"}'
+```
+
+#### 14.3 List Proxies
+```
+GET /v2/proxy/list
+```
+Returns loaded proxies with credentials masked for safety.
+
+**Example:**
+```bash
+curl "http://127.0.0.1:9999/v2/proxy/list?key=your_admin_key"
+```
+
+#### 14.4 Clear Proxy Pool
+```
+POST /v2/proxy/clear
+```
+Removes all proxies from memory.
+
+**Example:**
+```bash
+curl -X POST "http://127.0.0.1:9999/v2/proxy/clear?key=your_admin_key"
+```
+
+---
+
+### 15. Configuration Management (Admin)
+
+**View and hot-reload config values dynamically — requires `ADMIN_KEY`**
+
+#### 15.1 View Config Status
+```
+GET /config/status
+```
+Returns currently loaded config file path and active values.
+
+**Example:**
+```bash
+curl "http://127.0.0.1:9999/config/status"
+```
+
+#### 15.2 Force Config Reload
+```
+POST /config/reload
+```
+Force re-reads `.lyrica.config` from disk without restarting the application.
+
+**Example:**
+```bash
+curl -X POST "http://127.0.0.1:9999/config/reload?key=your_admin_key"
+```
+
+#### Response
+```json
+{
+  "status": "success",
+  "message": "Config reloaded",
+  "config": {
+    "config_path": "/path/to/.lyrica.config",
+    "defaults": {
+      "fast": false,
+      "metadata": false,
+      "mood": false,
+      "sequence": "1,2,3",
+      "timestamps": false
+    },
+    "server": {
+      "fast_timeout": 20,
+      "request_timeout": 60
+    }
+  },
+  "timestamp": "2026-07-19T16:20:00+00:00"
+}
+```
+
+
+### 16. Web GUI
 
 **Interactive web interface for testing**
 
@@ -755,7 +889,7 @@ Navigate to `http://127.0.0.1:9999/app` in your browser to use the built-in GUI.
 
 ---
 
-### 14. API Info
+### 17. API Info
 
 **Get API version, status, and endpoint summary**
 
@@ -1129,13 +1263,9 @@ curl "${API_URL}/lyrics/?artist=$(python3 -c "import urllib.parse; print(urllib.
 4. Copy the Client Access Token
 5. Add to `.env`: `GENIUS_TOKEN=your_token`
 
-**YouTube Music (Optional — for better YouTube source results):**
-```bash
-pip install ytmusicapi
-ytmusicapi setup
-# Follow prompts → generates headers_auth.json
-# Set YOUTUBE_COOKIE=path/to/headers_auth.json in .env
-```
+**Proxy Rotation Pool (Optional):**
+- To set up proxy rotation for robust fetching under rate limits, copy `.lyrica.config.example` to `.lyrica.config` and add proxies under the `[proxies]` section.
+- You can add both HTTP and SOCKS5 proxies. Credentials will be auto-masked in all API responses.
 
 **Musixmatch Token (Optional):**
 - Register at https://developer.musixmatch.com/
@@ -1146,13 +1276,13 @@ ytmusicapi setup
 ## Frequently Asked Questions
 
 **Q: Is authentication required?**
-A: No — public endpoints work without any key. Only `/cache/clear` (admin) requires `ADMIN_KEY`.
+A: No — public endpoints work without any key. Only administrative endpoints (like `/cache/clear`, `/config/reload`, `/v2/proxy/*`) require the `ADMIN_KEY`.
 
 **Q: What's the rate limit?**
-A: 15 requests/minute per IP. Cache results in your app to stay within limits.
+A: 15 requests/minute per IP by default. Cache results in your app to stay within limits. Rate limits can be configured in `.lyrica.config` per fetcher.
 
 **Q: Can I deploy to production?**
-A: Yes. Use Gunicorn (`gunicorn -w 4 -b 0.0.0.0:9999 run:app`) and optionally an Nginx reverse proxy. For high traffic, use the prehosted Hugging Face instance.
+A: Yes. Use Gunicorn (`gunicorn -c gunicorn.config.py run:app`) and optionally an Nginx reverse proxy. For high traffic, use the prehosted Hugging Face instance.
 
 **Q: How do I get timestamped lyrics?**
 A: Add `&timestamps=true`. Sources 2–7 all support timestamps. Source 1 (Genius) is plain-text only.
@@ -1171,4 +1301,4 @@ A: Yes. Genius (source 1) simply won't load, but all other 6 sources still work.
 
 ---
 
-**Last Updated**: June 24, 2026 | **Version**: 1.2.10
+**Last Updated**: July 19, 2026 | **Version**: 1.3.0

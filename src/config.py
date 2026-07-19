@@ -20,7 +20,9 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
 # external tokens (must be provided via environment variables in production)
 GENIUS_TOKEN = os.getenv("GENIUS_TOKEN", "")
-YOUTUBE_COOKIE = os.getenv("YOUTUBE_COOKIE", "")
+
+# The current YouTube fetcher uses public APIs and caption fallbacks, so no
+# cookie-based auth is required or consumed by the runtime.
 
 # lrclib
 LRCLIB_API_URL = os.getenv("LRCLIB_API_URL", "https://lrclib.net/api/get")

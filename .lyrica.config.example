@@ -1,0 +1,77 @@
+# ============================================================
+# .lyrica.config — Lyrica API User Configuration File
+# ============================================================
+# This file is OPTIONAL. If it does not exist, Lyrica works
+# exactly as before with its built-in defaults.
+#
+# Location priority (first found wins):
+#   1. Path in LYRICA_CONFIG environment variable
+#   2. .lyrica.config in the current working directory
+#   3. ~/.lyrica.config in your home directory
+#
+# All values shown below are the defaults.
+# Uncomment and change any you want to customise.
+#
+# IMPORTANT: Query parameters on API endpoints ALWAYS override
+#            the values set in this file.
+# ============================================================
+
+
+[defaults]
+# Default parameter values applied when not supplied in the request.
+
+# timestamps = false        ; Return synced (timed) lyrics by default
+# mood       = false        ; Run mood/sentiment analysis by default
+# metadata   = false        ; Fetch song metadata (cover art, etc.) by default
+# fast       = false        ; Use fast parallel mode by default
+# sequence   = 1,2,3        ; Default fetcher sequence (comma-separated IDs)
+#                           ;   1=Genius 2=LRCLIB 3=YouTube 4=NetEase
+#                           ;   5=Megalobiz 6=Musixmatch 7=SimpMusic
+
+
+[reload]
+# Config file hot-reload settings.
+
+# reload_on_config_change = false   ; If true, Lyrica watches this file and
+#                                   ; automatically reloads it when changed.
+#                                   ; If false, use POST /config/reload to
+#                                   ; trigger a reload manually (admin key required).
+
+
+[rate_limits]
+# Requests per minute (RPM) sent to each lyrics source.
+# Lower = more polite to the source; higher = faster (risk bans).
+
+# genius_rpm      = 5
+# lrclib_rpm      = 30
+# youtube_rpm     = 10
+# netease_rpm     = 20
+# megalobiz_rpm   = 15
+# musixmatch_rpm  = 15    ; requires MUSIXMATCH_TOKEN env var to be active
+# simpmusic_rpm   = 20
+
+
+[proxies]
+# Proxy list — Lyrica rotates through these round-robin.
+# Supported schemes: http://, https://, socks5://
+# Credentials are masked in all API responses and logs.
+
+# proxy_1 = http://user:password@host:port
+# proxy_2 = socks5://host:port
+# proxy_3 = https://host:port
+
+# persist = false     ; If true, proxies added via /v2/proxy/set are saved here.
+
+
+[cache]
+# Override the default cache settings (CACHE_TTL / CACHE_DIR env vars).
+
+# ttl = 86400          ; Cache time-to-live in seconds (default: 24 hours)
+# dir = ./cache_data   ; Directory to store cache files
+
+
+[server]
+# Server-side timeout settings.
+
+# fast_timeout    = 20    ; Max seconds for fast-mode parallel fetch
+# request_timeout = 60    ; Max seconds for a single fetcher request

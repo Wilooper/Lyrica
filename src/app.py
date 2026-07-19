@@ -13,7 +13,10 @@ from src.cache import clear_cache, cache_stats
 from src.config import ADMIN_KEY
 
 def create_app():
-    app = Flask(__name__, template_folder="templates", static_folder="static")
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    template_dir = os.path.join(base_dir, "templates")
+    static_dir = os.path.join(base_dir, "static")
+    app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
     
     CORS(app, resources={r"/*": {"origins": "*", "allow_headers": ["Content-Type"], "expose_headers": ["Access-Control-Allow-Origin"]}})
     
@@ -22,6 +25,16 @@ def create_app():
     
     app.logger = get_logger("Lyrica")
     app.config["VERSION"] = __version__
+    
+    # ── Load user config (.lyrica.config) — must happen before routes ────────
+    try:
+        from src.user_config import load_user_config
+        user_cfg = load_user_config()
+        app.config["USER_CONFIG"] = user_cfg
+        app.logger.info(f"User config loaded: {user_cfg.config_path or 'defaults'}")
+    except Exception as e:
+        app.logger.warning(f"User config load failed (proceeding with defaults): {e}")
+        app.config["USER_CONFIG"] = None
     
     # Rate limiting: per-IP key, default "15 per minute".
     # Use RATE_LIMIT_STORAGE_URI to set a Redis (recommended) or another backend.

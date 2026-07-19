@@ -2,7 +2,13 @@
 
 ![Made in India](https://img.shields.io/badge/Made%20in-India-blue.svg) ![Python](https://img.shields.io/badge/Python-3.12%2B-brightgreen.svg) ![License](https://img.shields.io/badge/License-MIT-yellow.svg) ![Flask](https://img.shields.io/badge/Flask-3.0.0-blue.svg) ![Status](https://img.shields.io/badge/Status-Active-success.svg)
 
-A powerful, open-source RESTful API for retrieving song lyrics with advanced features like mood analysis, timestamped lyrics, metadata extraction, trending charts, and multi-source aggregation. Built with Python and Flask, optimized for Bollywood and global music queries.
+A Flask-based lyrics API for plain and timestamped lyrics, metadata, sentiment analysis, trending charts, and multi-source fallback. The current app version is 1.3.0.
+
+## Security Notes
+- Public endpoints do not require authentication.
+- Admin and management endpoints require `ADMIN_KEY`.
+- Optional API tokens are only used for third-party sources.
+- Cookie-based YouTube auth is not required by default.
 
 ## Before You Start
 - This is the Flask version. If you want the FastAPI version, visit:
@@ -14,24 +20,24 @@ A powerful, open-source RESTful API for retrieving song lyrics with advanced fea
 - **Timestamped Lyrics (LRC)** — Synchronized lyrics with millisecond precision from multiple sources
 - **Mood & Sentiment Analysis** — Sentiment detection and word frequency analysis
 - **Rich Metadata** — Song cover art, duration, genre, release date, and artist info
-- **Smart Caching** — TTL-based caching (1 hour default) to reduce external API calls
+- **Smart Caching** — TTL-based caching (24-hour default) to reduce external API calls
 - **Rate Limiting** — 15 requests/minute per IP
 - **Fast Mode** — Parallel fetching for sub-second response times
+- **Proxy Rotation** — Thread-safe, round-robin rotating proxy pool with failure cooldown and auto-masking credentials
+- **User Configuration** — INI-based configuration (`.lyrica.config`) supporting hot-reloads and environment overrides
 - **Trending Charts** — Real-time trending songs by country via Apple Music
-- **Analytics** — Top user queries and trending/query intersection insights
-- **Song Suggestions** — Autocomplete via MusicBrainz
-- **CORS-Enabled** — Production-ready for frontend integration
-- **Interactive GUI** — Built-in web interface for testing and exploration
-- **Admin Tools** — Cache management and statistics endpoints
+- **Analytics & Auto-complete** — Search suggestions via MusicBrainz and top query metrics
+- **Admin Tools** — Cache, config, and proxy pool management endpoints
 - **Comprehensive Logging** — Debug and monitor with detailed request/response logs
 - **Made in India** 🇮🇳 — Optimized for Indian music platforms (JioSaavn integration)
 
 ## What's New
-- Added `/trending/` endpoint — top trending content for any country via Apple Music
-- Added `/analytics/top-queries/` — see your server's most queried songs
-- Added `/analytics/trending-by-country/`, `/analytics/trending-vs-queries/`, `/analytics/trending-intersection/` — advanced analytics
-- Added `/suggestion` — MusicBrainz-powered song autocomplete
-- Refreshed sources: removed dead APIs (Lyrics.ovh, ChartLyrics, LyricsFreek), added NetEase, Megalobiz, Musixmatch
+- **Proxy Pool & Rotation API** — Rotate through proxies with custom schemes (`http`, `https`, `socks5`)
+- **INI Configuration System** — Hot-reloadable `.lyrica.config` file to configure rates, cache, and defaults
+- **Health Check Endpoint** — `/health` endpoint to monitor API status and version info
+- **Apple Music / Suggestion Upgrades** — Autocomplete suggestions via MusicBrainz and analytics queries
+- **Robust Async Client Migration** — Ported internal fetchers to `httpx` async clients for concurrent racing
+
 
 ## 🎵 Supported Sources
 
@@ -93,38 +99,57 @@ docker run -p 9999:9999 \
 
 ## ⚙️ Configuration
 
+Lyrica uses a two-tier configuration system: environment variables for system deployment (securities, directories), and an optional `.lyrica.config` INI file for user/application level settings.
+
+### 1. Environment Variables (`.env`)
+
 Create a `.env` file in the project root:
 
 ```env
-# Required for Genius source
-GENIUS_TOKEN=your_genius_api_token_here
+# Secure key to protect admin/management endpoints
+ADMIN_KEY=your_secure_admin_key_here
 
-# Optional
-ADMIN_KEY=your_secure_random_key
+# Genius API client token (Optional, source 1)
+GENIUS_TOKEN=your_token
+
+# Musixmatch client token (Optional, source 6)
+MUSIXMATCH_TOKEN=your_token
+
+# Rate limiting storage backend (Recommended: redis://... in production)
+RATE_LIMIT_STORAGE_URI=memory://
+
+# Caching and log levels
 LOG_LEVEL=INFO
-CACHE_TTL=3600
-CACHE_DIR=cache
-
-# Optional: path to YouTube Music headers/cookie file
-YOUTUBE_COOKIE=path/to/headers.json
-
-# Optional: Musixmatch token (improves results)
-MUSIXMATCH_TOKEN=your_musixmatch_token
+CACHE_TTL=86400
+CACHE_DIR=cache_data
 ```
+
+### 2. User Configuration (`.lyrica.config`)
+
+For fine-grained control over fetchers, proxy pools, and rate limits, copy `.lyrica.config.example` to `.lyrica.config` in your project root or home directory.
+
+Features:
+- **Default settings**: Override default request params like `fast`, `timestamps`, `mood`, `metadata`, or the fetcher `sequence`.
+- **Proxy rotation**: Paste list of socks5/http proxies under `[proxies]` for round-robin rotation.
+- **Rate limits**: Configure requests-per-minute (RPM) limits for each fetcher to avoid IP bans.
+- **Hot Reloading**: Config can watch for changes or be reloaded dynamically via `/config/reload`.
+
+See [.lyrica.config.example](.lyrica.config.example) for detailed fields.
 
 ### Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `GENIUS_TOKEN` | No* | — | Genius API token — needed for source 1. Get at [genius.com/api-clients](https://genius.com/api-clients) |
-| `ADMIN_KEY` | No | — | Secure key to access admin endpoints (e.g. `/cache/clear`) |
-| `LOG_LEVEL` | No | INFO | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
-| `CACHE_TTL` | No | 3600 | Cache time-to-live in seconds |
-| `CACHE_DIR` | No | cache | Directory for cache files |
-| `YOUTUBE_COOKIE` | No | — | Path to YouTube Music `headers.json` (from ytmusicapi setup) |
-| `MUSIXMATCH_TOKEN` | No | — | Musixmatch API token for improved results |
+| `ADMIN_KEY` | No | — | Secure key to access admin and management endpoints (e.g. `/admin/cache/clear`, `/config/reload`) |
+| `GENIUS_TOKEN` | No* | — | Genius API token — needed for Genius fetcher. Get at [genius.com/api-clients](https://genius.com/api-clients) |
+| `MUSIXMATCH_TOKEN` | No | — | Musixmatch API token for Musixmatch fetcher |
+| `RATE_LIMIT_STORAGE_URI` | No | `memory://` | Storage backend for rate limiting (e.g. `redis://...`) |
+| `LOG_LEVEL` | No | `INFO` | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `CACHE_TTL` | No | `86400` | Cache time-to-live in seconds |
+| `CACHE_DIR` | No | `cache_data` | Directory for cache files |
 
-\* Lyrica still works without `GENIUS_TOKEN` — Genius source simply won't load.
+\* Lyrica still works without Genius or Musixmatch tokens — these sources will simply be skipped.
+
 
 ## 🚀 Deployment
 
@@ -200,13 +225,13 @@ curl "http://127.0.0.1:9999/suggestion?q=Tum%20Hi%20Ho&limit=5"
 - Verify token in `.env`
 - The API works without Genius — other sources will be tried
 
-### YouTube Music Issues
-- Run `ytmusicapi setup` in the project directory
-- Set `YOUTUBE_COOKIE` in `.env` to the path of the generated `headers_auth.json`
+### YouTube Music Blocks & Rate Limits
+- YouTube Music fetcher runs a robust 3-layer fallback system (ytmusicapi → transcript-api → yt-dlp subtitles) which does not require cookies out of the box!
+- If your IP gets rate-limited by YouTube, set up the proxy pool in `.lyrica.config` to rotate requests.
 
-### Rate Limit Issues
-- Wait for the 60-second window to reset
-- Cache results in your application to avoid redundant requests
+### Rate Limit Issues (Flask-Limiter)
+- The local server limits clients to 15 requests per minute per IP.
+- Cache results or configure a Redis backend using `RATE_LIMIT_STORAGE_URI` for higher limits.
 
 ### Port Already in Use
 Edit `run.py`:
@@ -292,8 +317,8 @@ See [LICENSE](LICENSE) file for details.
 - **Email**: thinkelyorg@gmail.com
 
 ---
-**Previous Update & Version**: june 06, 2026 & version: 1.2.1
+**Current Version**: 1.3.0
 
-**Latest Updated On**: June 24, 2026 | **Version**: 1.2.10
+**Reference**: GitHub release metadata and the current API health response
 
 Made with ❤️ in India 🇮🇳

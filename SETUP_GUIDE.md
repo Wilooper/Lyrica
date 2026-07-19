@@ -24,29 +24,31 @@ pip install -r requirements.txt
 ### 2. Configure Environment
 
 ```bash
+# Copy environment template
 cp .env.example .env
+
+# (Optional) Copy user config template
+cp .lyrica.config.example .lyrica.config
 ```
 
-Open `.env` and fill in your values:
+Open `.env` and fill in system parameters:
 
 ```env
-# Required for Genius source (source 1)
-GENIUS_TOKEN=your_genius_api_token_here
+# Secure key to protect admin/management endpoints
+ADMIN_KEY=your_secure_random_key_here
 
-# Optional — secures the /cache/clear admin endpoint
-ADMIN_KEY=your_secure_random_key
+# Genius API client token (Optional, source 1)
+GENIUS_TOKEN=
 
-# Optional
-LOG_LEVEL=INFO
-CACHE_TTL=3600
-CACHE_DIR=cache
+# Musixmatch client token (Optional, source 6)
+MUSIXMATCH_TOKEN=
 
-# Optional — path to YouTube Music headers file
-YOUTUBE_COOKIE=path/to/headers_auth.json
-
-# Optional — improves Musixmatch results
-MUSIXMATCH_TOKEN=your_musixmatch_token
+# Rate limit backend (default: memory://)
+RATE_LIMIT_STORAGE_URI=memory://
 ```
+
+*(Optional)* Configure [.lyrica.config](file:///.lyrica.config) to set up rotating proxy pools, custom fetcher sequences, and rate limit rules.
+
 
 ### 3. Start the Server
 
@@ -142,17 +144,17 @@ Get a free token at https://genius.com/api-clients:
 3. Copy the **Client Access Token**
 4. Add to `.env`: `GENIUS_TOKEN=your_token`
 
-### YouTube Music Auth (Optional)
+### Proxy Rotation Pool (Optional)
 
-For better YouTube Music results:
+If you are deploying to a server (like VPS or cloud platforms) and face rate limits or bot challenges from Genius or YouTube, add proxies to your `.lyrica.config` file:
 
-```bash
-pip install ytmusicapi
-ytmusicapi setup
-# Follow the browser-based setup to generate headers_auth.json
+```ini
+[proxies]
+proxy_1 = http://user:password@host:port
+proxy_2 = socks5://host:port
 ```
+Lyrica will automatically rotate requests round-robin across all active proxies and mask credentials in logs and API responses.
 
-Then set `YOUTUBE_COOKIE=path/to/headers_auth.json` in `.env`.
 
 ### Musixmatch Token (Optional)
 
@@ -225,10 +227,10 @@ pip install -r requirements.txt
 - Regenerate at https://genius.com/api-clients
 - The API still works without it — 6 other sources remain active
 
-### YouTube Music Issues
+### YouTube Music Blocks
+- The YouTube fetcher has a robust 3-layer fallback (metadata, transcripts, and subtitles). It doesn't require any cookie or login out of the box!
+- If your server's IP is blocked by YouTube, setup proxies under `[proxies]` in `.lyrica.config` to rotate requests.
 
-- Run `ytmusicapi setup` and update `YOUTUBE_COOKIE` in `.env`
-- If not configured, the 3-layer fallback (transcript-api → yt-dlp) still works without auth
 
 ### Port Already in Use
 

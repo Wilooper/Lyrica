@@ -1,2 +1,2 @@
 # package initializer
-__version__ = "1.0-refactor"
+__version__ = "1.3.0"

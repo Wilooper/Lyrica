@@ -12,11 +12,22 @@ venv.bak/
 # dotenv
 .env
 *.env
+.lyrica.config
 
 # cache
 cache/
+cache_data/
+
+# generated reports
+lyrica_debug_report.html
 
 # IDEs
 .vscode/
 .idea/
 *.swp
+
+# Credentials / Cookies
+headers_auth.json
+*cookie*
+*.cookie
+
