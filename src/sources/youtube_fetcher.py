@@ -5,16 +5,19 @@ Multi-layer YouTube lyrics extractor.
 
 Layer 1 — ytmusicapi.get_lyrics()
   Fastest path: uses YouTube Music's official lyrics API.
-  Works for most songs on the YT Music catalog.
+  Automatically uses authenticated mode if headers_auth.json or cookies.txt
+  are found in the project root (or cwd). Falls back to unauthenticated.
 
 Layer 2 — youtube-transcript-api
   Fetches auto-generated captions / subtitles by video ID.
   Works for music videos, fan-uploaded tracks, and any video with captions.
   Produces timed_lyrics from caption timestamps.
+  Routed through the Webshare rotating proxy.
 
 Layer 3 — yt-dlp subtitle extraction
   Most robust: downloads VTT/SRT subtitles via yt-dlp.
   Slowest but catches everything Layer 1 & 2 miss.
+  Routed through the Webshare rotating proxy; uses cookies.txt if present.
 
 Each layer is tried in order; first success wins.
 All layers run blocking code in a thread pool to stay async-safe.
@@ -35,6 +38,82 @@ _VTT_TAG_RE   = re.compile(r"<[^>]+>")
 _VTT_TS_RE    = re.compile(
     r"(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})"
 )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Webshare rotating proxy configuration
+# Credentials are read from environment variables — never hardcoded.
+#
+# Option A (recommended): set a full proxy URL
+#   YT_PROXY_URL=http://user:pass@p.webshare.io:80
+#
+# Option B: set individual components
+#   YT_PROXY_USER=your-username-rotate
+#   YT_PROXY_PASS=your-password
+#   YT_PROXY_HOST=p.webshare.io
+#   YT_PROXY_PORT=80  (default)
+#
+# If neither is set, all YouTube layers run without a proxy.
+# ─────────────────────────────────────────────────────────────────────────────
+def _build_proxy_url() -> str | None:
+    """Build proxy URL from environment variables. Returns None if not configured."""
+    # Option A: full URL already set
+    full = os.environ.get("YT_PROXY_URL", "").strip()
+    if full:
+        return full
+
+    # Option B: individual components
+    user = os.environ.get("YT_PROXY_USER", "").strip()
+    passwd = os.environ.get("YT_PROXY_PASS", "").strip()
+    host = os.environ.get("YT_PROXY_HOST", "").strip()
+    port = os.environ.get("YT_PROXY_PORT", "80").strip()
+    if user and passwd and host:
+        return f"http://{user}:{passwd}@{host}:{port}"
+
+    return None
+
+_PROXY_URL: str | None = _build_proxy_url()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Auth-file detection
+# Searches for cookies / headers files relative to the project root.
+# ─────────────────────────────────────────────────────────────────────────────
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+def _find_auth_file() -> tuple[str | None, str | None]:
+    """
+    Scan for YT Music authentication files.
+
+    Priority order:
+      1. headers_auth.json  — ytmusicapi browser-headers auth
+      2. cookies.txt        — Netscape cookie file (ytmusicapi cookie auth)
+
+    Looks in: project root, current working directory, script directory.
+
+    Returns (file_path, auth_type) where auth_type is 'headers' or 'cookies',
+    or (None, None) if no auth file is found.
+    """
+    search_dirs = [
+        _PROJECT_ROOT,
+        os.getcwd(),
+        os.path.dirname(os.path.abspath(__file__)),
+    ]
+
+    for d in search_dirs:
+        # headers_auth.json takes priority (richer auth)
+        p = os.path.join(d, "headers_auth.json")
+        if os.path.isfile(p):
+            logger.info(f"[YTMusic] Found headers auth file: {p}")
+            return p, "headers"
+
+        # cookies.txt second
+        p = os.path.join(d, "cookies.txt")
+        if os.path.isfile(p):
+            logger.info(f"[YTMusic] Found cookies file: {p}")
+            return p, "cookies"
+
+    logger.info("[YTMusic] No auth file found — using unauthenticated mode")
+    return None, None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -117,16 +196,58 @@ class YoutubeFetcher(BaseFetcher):
 
     # Singleton YTMusic instance — creating it is expensive (network call).
     _ytmusic = None
+    _ytmusic_authenticated = False  # tracks whether the instance uses auth
+    _auth_checked = False           # only run auth detection once
 
     @classmethod
     def _get_ytmusic(cls):
-        if cls._ytmusic is None:
+        """
+        Return (or lazily create) the YTMusic singleton.
+
+        Auth detection runs once at first call:
+          - If headers_auth.json exists  → YTMusic(auth=headers_auth.json)  [authenticated]
+          - If cookies.txt exists only   → YTMusic()  [unauthenticated; cookies.txt used by yt-dlp Layer 3]
+          - Otherwise                    → YTMusic()  [unauthenticated]
+
+        NOTE: ytmusicapi only accepts a browser-headers JSON file (headers_auth.json)
+        as its auth argument. Netscape cookies.txt is NOT supported by ytmusicapi —
+        it is passed to yt-dlp in Layer 3 for authenticated YouTube downloads.
+        """
+        if not cls._auth_checked:
+            cls._auth_checked = True
+            auth_file, auth_type = _find_auth_file()
+
             try:
                 from ytmusicapi import YTMusic
-                cls._ytmusic = YTMusic()
-                logger.info("YTMusic instance created")
+
+                if auth_file and auth_type == "headers":
+                    # headers_auth.json: browser-headers JSON supported by ytmusicapi
+                    cls._ytmusic = YTMusic(auth=auth_file)
+                    cls._ytmusic_authenticated = True
+                    logger.info("[YTMusic] Authenticated via headers_auth.json")
+                else:
+                    # cookies.txt is NOT usable by ytmusicapi - only by yt-dlp Layer 3
+                    if auth_file and auth_type == "cookies":
+                        logger.info(
+                            "[YTMusic] cookies.txt detected (for yt-dlp Layer 3); "
+                            "ytmusicapi running unauthenticated"
+                        )
+                    else:
+                        logger.info("[YTMusic] No auth file - running unauthenticated")
+                    cls._ytmusic = YTMusic()
+                    cls._ytmusic_authenticated = False
+
             except Exception as e:
-                logger.error(f"Failed to create YTMusic instance: {e}")
+                logger.error(f"[YTMusic] Failed to create authenticated instance: {e}")
+                # Fallback: try unauthenticated
+                try:
+                    from ytmusicapi import YTMusic
+                    cls._ytmusic = YTMusic()
+                    cls._ytmusic_authenticated = False
+                    logger.warning("[YTMusic] Fell back to unauthenticated mode")
+                except Exception as e2:
+                    logger.error(f"[YTMusic] Unauthenticated fallback also failed: {e2}")
+
         return cls._ytmusic
 
     # ------------------------------------------------------------------ #
@@ -143,10 +264,13 @@ class YoutubeFetcher(BaseFetcher):
     # Layer 1 — ytmusicapi.get_lyrics()
     # ------------------------------------------------------------------ #
     async def _layer1_ytmusic(self, artist: str, song: str, timestamps: bool):
-        """Original ytmusicapi path. Returns build_result dict or None."""
+        """ytmusicapi path — authenticated if auth file detected, else open. Returns build_result dict or None."""
         ytmusic = self._get_ytmusic()
         if not ytmusic:
             return None
+
+        auth_label = "authenticated" if self._ytmusic_authenticated else "unauthenticated"
+        logger.info(f"[Layer1/ytmusicapi] {auth_label} — searching '{artist} - {song}'")
 
         try:
             results = await self._run(
@@ -208,7 +332,7 @@ class YoutubeFetcher(BaseFetcher):
             else:
                 return None
 
-            logger.info(f"[Layer1/ytmusicapi] success for {artist} - {song}")
+            logger.info(f"[Layer1/ytmusicapi] success for {artist} - {song} ({auth_label})")
             return build_result(
                 source="youtube_music",
                 artist=artist,
@@ -226,12 +350,13 @@ class YoutubeFetcher(BaseFetcher):
             return None
 
     # ------------------------------------------------------------------ #
-    # Layer 2 — youtube-transcript-api
+    # Layer 2 — youtube-transcript-api  (proxied via Webshare)
     # ------------------------------------------------------------------ #
     async def _layer2_transcript_api(self, artist: str, song: str, timestamps: bool):
         """
         Search YT Music for the video ID, then fetch captions via
-        youtube-transcript-api. Produces timed lyrics from caption timestamps.
+        youtube-transcript-api routed through the Webshare rotating proxy.
+        Produces timed lyrics from caption timestamps.
         """
         try:
             from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
@@ -274,10 +399,19 @@ class YoutubeFetcher(BaseFetcher):
             # Language preference: English first, then any
             lang_prefs = ["en", "en-US", "en-GB"]
 
+            # Build proxy dict for youtube-transcript-api (only if proxy configured)
+            proxy_dict = {"http": _PROXY_URL, "https": _PROXY_URL} if _PROXY_URL else None
+
             for vid in video_ids[:3]:
                 try:
                     def _fetch_transcript(video_id=vid):
-                        api = YouTubeTranscriptApi()
+                        # Pass proxies kwarg when proxy is configured
+                        try:
+                            api = YouTubeTranscriptApi(proxies=proxy_dict) if proxy_dict else YouTubeTranscriptApi()
+                        except TypeError:
+                            # Older API versions may not support proxies kwarg
+                            api = YouTubeTranscriptApi()
+
                         # Try preferred languages, fall back to auto-generated
                         try:
                             transcript_list = api.list(video_id)
@@ -311,7 +445,7 @@ class YoutubeFetcher(BaseFetcher):
                     use_timed = timed if timestamps else None
                     logger.info(
                         f"[Layer2/transcript-api] success for {artist} - {song} "
-                        f"(videoId={vid}, {len(timed)} segments)"
+                        f"(videoId={vid}, {len(timed)} segments, proxy=webshare-rotate)"
                     )
                     return build_result(
                         source="youtube_transcript",
@@ -342,11 +476,13 @@ class YoutubeFetcher(BaseFetcher):
             return None
 
     # ------------------------------------------------------------------ #
-    # Layer 3 — yt-dlp subtitle extraction
+    # Layer 3 — yt-dlp subtitle extraction  (proxied via Webshare)
     # ------------------------------------------------------------------ #
     async def _layer3_ytdlp(self, artist: str, song: str, timestamps: bool):
         """
         Use yt-dlp to search YouTube and download auto-subtitles (VTT).
+        All requests routed through the Webshare rotating proxy.
+        cookies.txt is passed to yt-dlp when available.
         Slowest but most robust fallback.
         """
         try:
@@ -357,10 +493,16 @@ class YoutubeFetcher(BaseFetcher):
 
         query = f"{song} {artist} official audio"
 
+        # Detect cookies file for yt-dlp (only .txt files, not headers JSON)
+        auth_path, auth_type = _find_auth_file()
+        cookies_file: str | None = None
+        if auth_path and auth_type == "cookies":
+            cookies_file = auth_path
+
         with tempfile.TemporaryDirectory() as tmpdir:
             vtt_path = None
             try:
-                ydl_opts = {
+                ydl_opts: dict = {
                     "quiet": True,
                     "no_warnings": True,
                     "writeautomaticsub": True,
@@ -373,6 +515,14 @@ class YoutubeFetcher(BaseFetcher):
                     "noplaylist": True,
                     "socket_timeout": 10,
                 }
+
+                # Only add proxy if configured via environment variable
+                if _PROXY_URL:
+                    ydl_opts["proxy"] = _PROXY_URL
+
+                if cookies_file:
+                    ydl_opts["cookiefile"] = cookies_file
+                    logger.info(f"[Layer3/yt-dlp] using cookies from: {cookies_file}")
 
                 def _dl():
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -410,7 +560,7 @@ class YoutubeFetcher(BaseFetcher):
                 use_timed = timed if timestamps else None
                 logger.info(
                     f"[Layer3/yt-dlp] success for {artist} - {song} "
-                    f"({len(timed)} subtitle segments)"
+                    f"({len(timed)} subtitle segments, proxy=webshare-rotate)"
                 )
                 return build_result(
                     source="youtube_subtitles",
@@ -432,7 +582,12 @@ class YoutubeFetcher(BaseFetcher):
     # Main fetch — try all layers in order
     # ------------------------------------------------------------------ #
     async def fetch(self, artist: str, song: str, timestamps: bool = False):
-        logger.info(f"YouTube fetcher: '{artist} - {song}' (timestamps={timestamps})")
+        auth_label = "authenticated" if self._ytmusic_authenticated else "unauthenticated"
+        proxy_label = "proxy=configured" if _PROXY_URL else "proxy=none"
+        logger.info(
+            f"YouTube fetcher: '{artist} - {song}' "
+            f"(timestamps={timestamps}, ytmusic={auth_label}, {proxy_label})"
+        )
 
         # Layer 1: ytmusicapi (fastest)
         result = await self._layer1_ytmusic(artist, song, timestamps)

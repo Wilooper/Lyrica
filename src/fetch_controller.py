@@ -7,7 +7,7 @@ import asyncio
 from src.sources import ALL_FETCHERS
 
 
-_SOURCE_ORDER = ["genius", "lrclib", "youtube", "netease", "megalobiz", "musixmatch", "simpmusic"]
+_SOURCE_ORDER = ["genius", "lrclib", "youtube", "netease", "megalobiz", "musixmatch"]
 _SOURCE_BY_ID = {
 	1: "genius",
 	2: "lrclib",
@@ -15,7 +15,6 @@ _SOURCE_BY_ID = {
 	4: "netease",
 	5: "megalobiz",
 	6: "musixmatch",
-	7: "simpmusic",
 }
 
 

@@ -1,33 +1,55 @@
-# Python
+# ── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-env/
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+.venv/
 venv/
+env/
 ENV/
 env.bak/
 venv.bak/
 
-# dotenv
+# ── Environment / secrets ─────────────────────────────────────────────────────
 .env
 *.env
 .lyrica.config
 
-# cache
+# ── YT Music auth files (NEVER commit these) ─────────────────────────────────
+headers_auth.json
+cookies.txt
+*cookies*.txt
+*.cookie
+*cookie*
+
+# ── Proxy / credential files ──────────────────────────────────────────────────
+*_auth.json
+*.credentials
+*.token
+
+# ── Cache directories ─────────────────────────────────────────────────────────
 cache/
 cache_data/
 
-# generated reports
+# ── Debug / generated reports ─────────────────────────────────────────────────
 lyrica_debug_report.html
+*.html.bak
 
-# IDEs
+# ── IDEs ─────────────────────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
+*.swo
+*~
 
-# Credentials / Cookies
-headers_auth.json
-*cookie*
-*.cookie
+# ── OS files ─────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
 
+# ── Security directory (if it contains runtime secrets) ──────────────────────
+security/*.key
+security/*.pem
+security/*.p12

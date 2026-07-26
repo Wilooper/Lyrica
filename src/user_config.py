@@ -56,7 +56,6 @@ class UserConfig:
 	netease_rpm: int = 20
 	megalobiz_rpm: int = 15
 	musixmatch_rpm: int = 15
-	simpmusic_rpm: int = 20
 	fast_timeout: int = 20
 	request_timeout: int = 60
 	cache_ttl: int | None = None
@@ -81,7 +80,6 @@ class UserConfig:
 				"netease_rpm": self.netease_rpm,
 				"megalobiz_rpm": self.megalobiz_rpm,
 				"musixmatch_rpm": self.musixmatch_rpm,
-				"simpmusic_rpm": self.simpmusic_rpm,
 			},
 			"proxies": {"items": self.proxies, "persist": False},
 			"cache": {"ttl": self.cache_ttl, "dir": self.cache_dir},
@@ -127,7 +125,6 @@ def _load_from_path(path: Path) -> UserConfig:
 		cfg.netease_rpm = _parse_int(rate_limits.get("netease_rpm"), cfg.netease_rpm)
 		cfg.megalobiz_rpm = _parse_int(rate_limits.get("megalobiz_rpm"), cfg.megalobiz_rpm)
 		cfg.musixmatch_rpm = _parse_int(rate_limits.get("musixmatch_rpm"), cfg.musixmatch_rpm)
-		cfg.simpmusic_rpm = _parse_int(rate_limits.get("simpmusic_rpm"), cfg.simpmusic_rpm)
 
 	if parser.has_section("cache"):
 		cache = parser["cache"]

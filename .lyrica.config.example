@@ -26,7 +26,7 @@
 # fast       = false        ; Use fast parallel mode by default
 # sequence   = 1,2,3        ; Default fetcher sequence (comma-separated IDs)
 #                           ;   1=Genius 2=LRCLIB 3=YouTube 4=NetEase
-#                           ;   5=Megalobiz 6=Musixmatch 7=SimpMusic
+#                           ;   5=Megalobiz 6=Musixmatch
 
 
 [reload]
@@ -48,7 +48,6 @@
 # netease_rpm     = 20
 # megalobiz_rpm   = 15
 # musixmatch_rpm  = 15    ; requires MUSIXMATCH_TOKEN env var to be active
-# simpmusic_rpm   = 20
 
 
 [proxies]
