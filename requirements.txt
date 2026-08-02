@@ -45,6 +45,9 @@ textblob==0.18.0             # sentiment analysis on lyrics
 nest_asyncio==1.6.0          # allows nested event loops (Flask sync→async bridge)
 anyio==4.4.0                 # async compatibility layer used by httpx
 
+# ── Groq AI (Translation & Romanization) ────────────────────
+groq==1.6.0                  # Official Groq SDK for llama-3.3-70b-versatile
+
 # ── XML parsing ──────────────────────────────────────────────
 # xml.etree.ElementTree is stdlib — no extra package needed
 

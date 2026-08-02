@@ -48,6 +48,9 @@ class UserConfig:
 	default_mood: bool = False
 	default_metadata: bool = False
 	default_fast: bool = False
+	default_translate: bool = False
+	default_romanize: bool = False
+	default_language: str = "en"
 	default_sequence: list[int] = field(default_factory=lambda: [1, 2, 3, 4, 5, 6, 7])
 	reload_on_config_change: bool = False
 	genius_rpm: int = 5
@@ -70,6 +73,9 @@ class UserConfig:
 				"mood": self.default_mood,
 				"metadata": self.default_metadata,
 				"fast": self.default_fast,
+				"translate": self.default_translate,
+				"romanize": self.default_romanize,
+				"language": self.default_language,
 				"sequence": self.default_sequence,
 			},
 			"reload": {"reload_on_config_change": self.reload_on_config_change},
@@ -112,6 +118,9 @@ def _load_from_path(path: Path) -> UserConfig:
 		cfg.default_mood = _parse_bool(defaults.get("mood"), cfg.default_mood)
 		cfg.default_metadata = _parse_bool(defaults.get("metadata"), cfg.default_metadata)
 		cfg.default_fast = _parse_bool(defaults.get("fast"), cfg.default_fast)
+		cfg.default_translate = _parse_bool(defaults.get("translate"), cfg.default_translate)
+		cfg.default_romanize = _parse_bool(defaults.get("romanize"), cfg.default_romanize)
+		cfg.default_language = (defaults.get("language") or cfg.default_language).strip().lower()
 		cfg.default_sequence = _parse_sequence(defaults.get("sequence"))
 
 	if parser.has_section("reload"):

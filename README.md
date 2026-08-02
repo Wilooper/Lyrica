@@ -314,7 +314,7 @@ See [LICENSE](LICENSE) file for details.
 - **Documentation**: [USER_GUIDE.md](USER_GUIDE.md)
 - **Issues**: [GitHub Issues](https://github.com/Wilooper/Lyrica/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/Wilooper/Lyrica/discussions)
-- **Email**: thinkelyorg@gmail.com
+- **Email**: wiloooper@proton.me
 
 ---
 **Current Version**: 1.3.0

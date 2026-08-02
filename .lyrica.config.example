@@ -24,6 +24,10 @@
 # mood       = false        ; Run mood/sentiment analysis by default
 # metadata   = false        ; Fetch song metadata (cover art, etc.) by default
 # fast       = false        ; Use fast parallel mode by default
+# translate  = false        ; Translate lyrics to target language by default
+# romanize   = false        ; Romanize/transliterate lyrics by default
+# language   = en           ; Default target language for translate/romanize
+#                           ;   Examples: en, hindi, spanish, japanese, french
 # sequence   = 1,2,3        ; Default fetcher sequence (comma-separated IDs)
 #                           ;   1=Genius 2=LRCLIB 3=YouTube 4=NetEase
 #                           ;   5=Megalobiz 6=Musixmatch

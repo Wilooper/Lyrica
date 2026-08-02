@@ -17,6 +17,14 @@ from src.sources.jiosaavan_fetcher import search_jiosaavn, get_jiosaavn_stream
 from src.trending_analytics import TrendingAnalyticsEngine, Country
 from src import __version__
 from src.config import ADMIN_KEY
+from src.groq_processor import process_lyrics
+from src.groq_key_manager import get_key_manager
+from src.translation_cache import (
+    make_translation_cache_key,
+    load_translation_cache,
+    save_translation_cache,
+    translation_cache_stats,
+)
 
 logger = get_logger("router")
 
@@ -72,6 +80,9 @@ def register_routes(app):
                             "/lyrics/?artist=The Beatles&song=Imagine&timestamps=true",
                             "/lyrics/?artist=The Beatles&song=Imagine&mood=true",
                             "/lyrics/?artist=The Beatles&song=Imagine&metadata=true",
+                            "/lyrics/?artist=The Beatles&song=Imagine&translate=true&language=en",
+                            "/lyrics/?artist=The Beatles&song=Imagine&romanize=true&language=hindi",
+                            "/lyrics/?artist=The Beatles&song=Imagine&timestamps=true&translate=true&romanize=true&language=en",
                             "/lyrics/?artist=The Beatles&song=Imagine&fast=true&timestamps=true&mood=true&metadata=true"
                         ]
                     },
@@ -218,6 +229,24 @@ def register_routes(app):
                         "required": False,
                         "default": False,
                         "description": "Use parallel fetching for faster results"
+                    },
+                    "translate": {
+                        "type": "boolean",
+                        "required": False,
+                        "default": False,
+                        "description": "Translate lyrics to target language (requires GROQ_API_KEY)"
+                    },
+                    "romanize": {
+                        "type": "boolean",
+                        "required": False,
+                        "default": False,
+                        "description": "Romanize/transliterate lyrics to target language script (requires GROQ_API_KEY)"
+                    },
+                    "language": {
+                        "type": "string",
+                        "required": False,
+                        "default": "en",
+                        "description": "Target language for translate/romanize (e.g., en, hindi, spanish, japanese)"
                     }
                 },
                 "fetchers": {
@@ -255,6 +284,9 @@ def register_routes(app):
         fast_mode  = request.args.get("fast",  str(cfg.default_fast     if cfg else False)).lower() == "true"
         analyze_mood      = request.args.get("mood",     str(cfg.default_mood     if cfg else False)).lower() == "true"
         include_metadata  = request.args.get("metadata", str(cfg.default_metadata if cfg else False)).lower() == "true"
+        do_translate = request.args.get("translate", str(cfg.default_translate if cfg else False)).lower() == "true"
+        do_romanize  = request.args.get("romanize",  str(cfg.default_romanize  if cfg else False)).lower() == "true"
+        target_language = request.args.get("language", cfg.default_language if cfg else "en").strip().lower()
         _fast_timeout = cfg.fast_timeout if cfg else 20
 
         if not artist or not song:
@@ -282,7 +314,8 @@ def register_routes(app):
             )
 
         logger.info(
-            f"Lyrics request: {artist} - {song} (fast={fast_mode}, mood={analyze_mood}, metadata={include_metadata})"
+            f"Lyrics request: {artist} - {song} (fast={fast_mode}, mood={analyze_mood}, "
+            f"metadata={include_metadata}, translate={do_translate}, romanize={do_romanize}, lang={target_language})"
         )
 
         # Record user query for analytics
@@ -296,7 +329,11 @@ def register_routes(app):
             logger.warning(f"Failed to record user query: {str(e)}")
 
         # 1. Check Cache First
-        cache_key = make_cache_key(artist, song, timestamps, sequence, fast_mode, analyze_mood, include_metadata)
+        cache_key = make_cache_key(
+            artist, song, timestamps, sequence, fast_mode,
+            analyze_mood, include_metadata,
+            translate=do_translate, romanize=do_romanize, language=target_language,
+        )
         cached = load_from_cache(cache_key)
 
         if cached:
@@ -394,7 +431,101 @@ def register_routes(app):
                 logger.warning(f"Metadata enhancement failed: {str(e)}")
                 result["metadata_error"] = f"Could not retrieve metadata: {str(e)}"
 
-        # 5. Cache if successful
+        # 5. Translate / Romanize if requested
+        if (do_translate or do_romanize) and result.get("status") == "success":
+            data = result.get("data", {})
+
+            # Check if Groq keys are configured
+            if not get_key_manager().has_keys:
+                return (
+                    jsonify({
+                        "status": "error",
+                        "error": {
+                            "message": "Translation/romanization requires a Groq API key. "
+                                       "Set GROQ_API_KEY in your .env file.",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        },
+                    }),
+                    503,
+                )
+
+            # Check translation cache first
+            trans_cache_key = make_translation_cache_key(
+                artist, song,
+                data.get("source", "unknown"),
+                target_language,
+                do_translate, do_romanize,
+                data.get("hasTimestamps", False),
+            )
+            cached_translation = load_translation_cache(trans_cache_key)
+
+            if cached_translation:
+                # Merge cached translation into result
+                result = cached_translation
+                logger.info(f"Translation cache hit for {artist} - {song}")
+            else:
+                # Extract lyric lines for LLM processing
+                has_timed = data.get("hasTimestamps", False) and data.get("timed_lyrics")
+
+                if has_timed:
+                    lyrics_lines = [entry.get("text", "") for entry in data["timed_lyrics"]]
+                else:
+                    raw_lyrics = data.get("lyrics", "")
+                    lyrics_lines = raw_lyrics.split("\n") if raw_lyrics else []
+
+                if lyrics_lines:
+                    try:
+                        groq_result = run_async(
+                            process_lyrics(
+                                lyrics_lines=lyrics_lines,
+                                target_language=target_language,
+                                translate=do_translate,
+                                romanize=do_romanize,
+                            ),
+                            timeout=120,
+                        )
+
+                        translated_lines = groq_result.get("translated")
+                        romanized_lines = groq_result.get("romanized")
+                        metadata = groq_result.get("metadata", {})
+
+                        # Add translation_metadata to data
+                        data["translation_metadata"] = {
+                            "target_language": metadata.get("target_language", target_language),
+                            "processed_by": metadata.get("processed_by", "groq/llama-3.3-70b-versatile"),
+                            "cached_from": "fresh",
+                        }
+
+                        if has_timed:
+                            # Synced lyrics: add romanized/translated to each timed_lyrics entry
+                            for i, entry in enumerate(data["timed_lyrics"]):
+                                if do_translate and translated_lines and i < len(translated_lines):
+                                    entry["translated"] = translated_lines[i]
+                                if do_romanize and romanized_lines and i < len(romanized_lines):
+                                    entry["romanized"] = romanized_lines[i]
+                        else:
+                            # Unsynced lyrics: add as top-level strings
+                            if do_translate and translated_lines:
+                                data["translated_lyrics"] = "\n".join(translated_lines)
+                            if do_romanize and romanized_lines:
+                                data["romanized_lyrics"] = "\n".join(romanized_lines)
+
+                        result["data"] = data
+
+                        # Save to translation cache
+                        try:
+                            save_translation_cache(trans_cache_key, result)
+                            logger.info(f"Translation cached for {artist} - {song}")
+                        except Exception as e:
+                            logger.warning(f"Translation cache save failed: {str(e)}")
+
+                        logger.info(f"Translation/romanization completed for {artist} - {song}")
+
+                    except Exception as e:
+                        logger.error(f"Translation/romanization failed: {str(e)}")
+                        result["translation_error"] = f"Translation processing failed: {str(e)}"
+
+        # 6. Cache if successful
         if result.get("status") == "success":
             data = result.get("data", {})
             if data.get("lyrics") or data.get("plain_lyrics") or data.get("lyrics_text"):
