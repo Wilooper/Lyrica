@@ -24,6 +24,7 @@ A Flask-based lyrics API for plain and timestamped lyrics, metadata, sentiment a
 - **Rate Limiting** — 15 requests/minute per IP
 - **Fast Mode** — Parallel fetching for sub-second response times
 - **Proxy Rotation** — Thread-safe, round-robin rotating proxy pool with failure cooldown and auto-masking credentials
+- **Lyrics Translation & Transliteration** — Translate and/or romanize lyrics on-the-fly to a preferred language/script using Groq LLM
 - **User Configuration** — INI-based configuration (`.lyrica.config`) supporting hot-reloads and environment overrides
 - **Trending Charts** — Real-time trending songs by country via Apple Music
 - **Analytics & Auto-complete** — Search suggestions via MusicBrainz and top query metrics
@@ -32,6 +33,7 @@ A Flask-based lyrics API for plain and timestamped lyrics, metadata, sentiment a
 - **Made in India** 🇮🇳 — Optimized for Indian music platforms (JioSaavn integration)
 
 ## What's New
+- **Lyrics Translation & Romanization** — Powered by Groq's `llama-3.3-70b-versatile` model, fully compatible with synced/plain formats and caching.
 - **Proxy Pool & Rotation API** — Rotate through proxies with custom schemes (`http`, `https`, `socks5`)
 - **INI Configuration System** — Hot-reloadable `.lyrica.config` file to configure rates, cache, and defaults
 - **Health Check Endpoint** — `/health` endpoint to monitor API status and version info
@@ -212,6 +214,15 @@ curl "http://127.0.0.1:9999/trending/?country=IN&limit=10"
 curl "http://127.0.0.1:9999/suggestion?q=Tum%20Hi%20Ho&limit=5"
 ```
 
+### Lyrics Translation & Transliteration (New)
+```bash
+# Get translated and romanized synced lyrics
+curl "http://127.0.0.1:9999/lyrics/?artist=Karan%20Aujla&song=Boyfriend&timestamps=true&translate=true&romanize=true&language=en"
+
+# Get translation only on plain/unsynced lyrics
+curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&translate=true&language=spanish"
+```
+
 ## 🛠️ Troubleshooting
 
 ### No Lyrics Found
@@ -243,6 +254,7 @@ if __name__ == '__main__':
 ## 📖 Documentation
 
 - **Full API Reference**: See [USER_GUIDE.md](USER_GUIDE.md)
+- **Lyrics Translation Guide**: See [TRANSLATION_GUIDE.md](TRANSLATION_GUIDE.md)
 - **Setup Details**: See [SETUP_GUIDE.md](SETUP_GUIDE.md)
 - **Issues**: Open GitHub issues for bugs or feature requests
 
