@@ -35,8 +35,8 @@ async def test_fetcher():
     assert len(res.get('timed_lyrics', [])) > 0
 
     # 2. Test Word Level Synced Lyrics (Rick Astley - Never Gonna Give You Up)
-    print("\n--- Test 2: Rick Astley - Never Gonna Give You Up (timestamps=True) ---")
-    res = await fetcher.fetch("Rick Astley", "Never Gonna Give You Up", timestamps=True)
+    print("\n--- Test 2: Rick Astley - Never Gonna Give You Up (timestamps=True, word_level=True) ---")
+    res = await fetcher.fetch("Rick Astley", "Never Gonna Give You Up", timestamps=True, word_level=True)
     if not res:
         print("Failed to fetch Rick Astley - Never Gonna Give You Up")
         sys.exit(1)

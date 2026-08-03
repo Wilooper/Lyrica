@@ -8,7 +8,7 @@ from src.config import CACHE_DIR, CACHE_TTL
 # Ensure cache directory exists
 os.makedirs(CACHE_DIR, exist_ok=True)
 
-CACHE_VERSION = "v3"  # bump this if response format changes
+CACHE_VERSION = "v4"  # bump this if response format changes
 
 
 def make_cache_key(

@@ -63,6 +63,15 @@ def _is_timestamped_result(result: dict | None) -> bool:
 	return bool(result.get("hasTimestamps") or result.get("timed_lyrics"))
 
 
+def _is_word_synced_result(result: dict | None) -> bool:
+	if not result:
+		return False
+	if result.get("sync_level") == "word":
+		return True
+	timed = result.get("timed_lyrics") or []
+	return any(isinstance(line, dict) and "words" in line for line in timed)
+
+
 async def fetch_lyrics_controller(
 	artist: str,
 	song: str,
@@ -77,27 +86,43 @@ async def fetch_lyrics_controller(
 	if not pass_param and sequence is None:
 		source_names = [name for name in _SOURCE_ORDER if name in ALL_FETCHERS]
 
+	# Prioritize lrcmux if word_level is requested
+	if word_level and "lrcmux" in source_names and source_names[0] != "lrcmux":
+		source_names.remove("lrcmux")
+		source_names.insert(0, "lrcmux")
+
 	if fast_mode and len(source_names) > 1:
 		tasks = [asyncio.create_task(_try_fetcher(name, artist, song, timestamps, word_level)) for name in source_names]
+		best_fallback = None
 		try:
 			done, pending = await asyncio.wait(tasks, timeout=fast_timeout, return_when=asyncio.FIRST_COMPLETED)
 			for task in done:
 				result = task.result()
 				if result and (not timestamps or _is_timestamped_result(result)):
-					for pending_task in pending:
-						pending_task.cancel()
-					return {"status": "success", "data": result}
-
-			for task in pending:
-				try:
-					result = await task
-					if result and (not timestamps or _is_timestamped_result(result)):
+					if not word_level or _is_word_synced_result(result):
 						for pending_task in pending:
-							if pending_task is not task:
-								pending_task.cancel()
+							pending_task.cancel()
 						return {"status": "success", "data": result}
-				except asyncio.CancelledError:
-					continue
+					elif best_fallback is None:
+						best_fallback = result
+
+			while pending:
+				next_done, pending = await asyncio.wait(pending, timeout=fast_timeout, return_when=asyncio.FIRST_COMPLETED)
+				for task in next_done:
+					try:
+						result = task.result()
+						if result and (not timestamps or _is_timestamped_result(result)):
+							if not word_level or _is_word_synced_result(result):
+								for pending_task in pending:
+									pending_task.cancel()
+								return {"status": "success", "data": result}
+							elif best_fallback is None:
+								best_fallback = result
+					except asyncio.CancelledError:
+						continue
+
+			if best_fallback:
+				return {"status": "success", "data": best_fallback}
 		finally:
 			for task in tasks:
 				if not task.done():
@@ -115,3 +140,4 @@ async def fetch_lyrics_controller(
 			"details": "All enabled fetchers returned no result",
 		},
 	}
+
