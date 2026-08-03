@@ -8,7 +8,7 @@ Use word-level sync to build:
 - **Accessibility tools** — follow along word by word
 - **Learning apps** — track pronunciation timing
 
-> **Source**: Word-level data is provided exclusively by the **Lrcmux source (ID 7)**, which aggregates from Musixmatch. No API token is required.
+> **Source**: Word-level data is provided exclusively by the **Lrcmux source (ID 7)**, which aggregates from Musixmatch. No API token is required. Due to which you may not get word level synced lyrics for every song so system will fall back to line level sync so that flow not break.
 
 ---
 
