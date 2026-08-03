@@ -27,7 +27,7 @@ Flask-Limiter==3.7.0         # per-IP rate limiting
 limits==3.12.0               # backend for Flask-Limiter
 
 # ── Environment / config ─────────────────────────────────────
-python-dotenv==1.0.1         # load .env in development
+python-dotenv==1.2.2         # load .env in development
 
 # ── Lyrics sources ───────────────────────────────────────────
 lyricsgenius==3.0.1          # Genius API (requires GENIUS_TOKEN env var)
