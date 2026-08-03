@@ -85,14 +85,30 @@ def _find_auth_file() -> tuple[str | None, str | None]:
     Scan for YT Music authentication files.
 
     Priority order:
-      1. headers_auth.json  — ytmusicapi browser-headers auth
-      2. cookies.txt        — Netscape cookie file (ytmusicapi cookie auth)
-
-    Looks in: project root, current working directory, script directory.
+      1. YT_HEADERS_PATH env var  — explicit path to headers_auth.json
+      2. YT_COOKIES_PATH env var  — explicit path to cookies.txt
+      3. headers_auth.json in project root / cwd / script dir
+      4. cookies.txt in project root / cwd / script dir
 
     Returns (file_path, auth_type) where auth_type is 'headers' or 'cookies',
     or (None, None) if no auth file is found.
     """
+    # ── 1. Explicit env vars (useful for hosted/containerised deployments) ──
+    env_headers = os.environ.get("YT_HEADERS_PATH", "").strip()
+    if env_headers and os.path.isfile(env_headers):
+        logger.info(f"[YTMusic] Found headers auth file via YT_HEADERS_PATH: {env_headers}")
+        return env_headers, "headers"
+    elif env_headers:
+        logger.warning(f"[YTMusic] YT_HEADERS_PATH set but file not found: {env_headers}")
+
+    env_cookies = os.environ.get("YT_COOKIES_PATH", "").strip()
+    if env_cookies and os.path.isfile(env_cookies):
+        logger.info(f"[YTMusic] Found cookies file via YT_COOKIES_PATH: {env_cookies}")
+        return env_cookies, "cookies"
+    elif env_cookies:
+        logger.warning(f"[YTMusic] YT_COOKIES_PATH set but file not found: {env_cookies}")
+
+    # ── 2. Filesystem scan (project root, cwd, script dir) ──────────────────
     search_dirs = [
         _PROJECT_ROOT,
         os.getcwd(),

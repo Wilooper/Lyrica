@@ -2,7 +2,7 @@
 
 ![Made in India](https://img.shields.io/badge/Made%20in-India-blue.svg) ![Python](https://img.shields.io/badge/Python-3.12%2B-brightgreen.svg) ![License](https://img.shields.io/badge/License-MIT-yellow.svg) ![Flask](https://img.shields.io/badge/Flask-3.0.0-blue.svg) ![Status](https://img.shields.io/badge/Status-Active-success.svg)
 
-A Flask-based lyrics API for plain and timestamped lyrics, metadata, sentiment analysis, trending charts, and multi-source fallback. The current app version is 1.3.0.
+A Flask-based lyrics API for plain and timestamped lyrics, metadata, sentiment analysis, trending charts, and multi-source fallback. The current app version is 1.4.0.
 
 ## Security Notes
 - Public endpoints do not require authentication.
@@ -17,13 +17,14 @@ A Flask-based lyrics API for plain and timestamped lyrics, metadata, sentiment a
 ## ✨ Key Features
 
 - **Multi-Source Lyrics Retrieval** — Aggregates from 7 active sources with intelligent fallback and validation
-- **Timestamped Lyrics (LRC)** — Synchronized lyrics with millisecond precision from multiple sources
+- **Timestamped Lyrics (LRC)** — Line-level synchronized lyrics with millisecond precision from multiple sources
+- **Word-Level Sync** — Per-word timestamps via Lrcmux/Musixmatch (`&word=true`) — ideal for karaoke and lyric-highlighting apps
 - **Mood & Sentiment Analysis** — Sentiment detection and word frequency analysis
 - **Rich Metadata** — Song cover art, duration, genre, release date, and artist info
 - **Smart Caching** — TTL-based caching (24-hour default) to reduce external API calls
 - **Rate Limiting** — 15 requests/minute per IP
 - **Fast Mode** — Parallel fetching for sub-second response times
-- **Proxy Rotation** — Thread-safe, round-robin rotating proxy pool with failure cooldown and auto-masking credentials
+- **Proxy Rotation** — Thread-safe, round-robin rotating proxy pool with failure cooldown and auto-masking credentials; seedable via `PROXY_URL` env var
 - **Lyrics Translation & Transliteration** — Translate and/or romanize lyrics on-the-fly to a preferred language/script using Groq LLM
 - **User Configuration** — INI-based configuration (`.lyrica.config`) supporting hot-reloads and environment overrides
 - **Trending Charts** — Real-time trending songs by country via Apple Music
@@ -32,26 +33,26 @@ A Flask-based lyrics API for plain and timestamped lyrics, metadata, sentiment a
 - **Comprehensive Logging** — Debug and monitor with detailed request/response logs
 - **Made in India** 🇮🇳 — Optimized for Indian music platforms (JioSaavn integration)
 
-## What's New
-- **Lyrics Translation & Romanization** — Powered by Groq's `llama-3.3-70b-versatile` model, fully compatible with synced/plain formats and caching.
-- **Proxy Pool & Rotation API** — Rotate through proxies with custom schemes (`http`, `https`, `socks5`)
-- **INI Configuration System** — Hot-reloadable `.lyrica.config` file to configure rates, cache, and defaults
-- **Health Check Endpoint** — `/health` endpoint to monitor API status and version info
-- **Apple Music / Suggestion Upgrades** — Autocomplete suggestions via MusicBrainz and analytics queries
-- **Robust Async Client Migration** — Ported internal fetchers to `httpx` async clients for concurrent racing
-
+## What's New in v1.4.0
+- **Word-Level Sync** (`&word=true`) — Per-word timestamps from Musixmatch via Lrcmux, perfect for karaoke highlighting
+- **Lrcmux Source (ID 7)** — Musixmatch lyrics aggregated via [api.lrcmux.dev](https://api.lrcmux.dev) without a token
+- **Global Proxy via ENV** — `PROXY_URL` env var seeds the shared proxy pool used by all fetchers at startup
+- **YT Auth via ENV** — `YT_COOKIES_PATH` and `YT_HEADERS_PATH` allow hosted deployments to set auth file locations securely
+- **Smarter Default Order** — Fetcher fallback now starts with LRCLIB → Lrcmux (most reliable synced sources first)
 
 ## 🎵 Supported Sources
 
 | ID | Source | Lyrics Type | Notes |
 |----|--------|-------------|-------|
 | 1 | Genius | Plain | Requires `GENIUS_TOKEN` |
-| 2 | LRCLIB | Timestamped + Plain | Free, very reliable |
+| 2 | LRCLIB | Timestamped + Plain | Free, very reliable — **tried first** |
 | 3 | YouTube Music | Timestamped + Plain | 3-layer fallback (ytmusicapi → transcript-api → yt-dlp) |
 | 4 | NetEase | Timestamped (LRC) | Via syncedlyrics, large catalog |
 | 5 | Megalobiz | Timestamped (LRC) | Via syncedlyrics, user-contributed |
 | 6 | Musixmatch | Timestamped (LRC) | Via syncedlyrics, optional `MUSIXMATCH_TOKEN` |
-| 7 | SimpMusic | Timestamped + Plain | Via api-lyrics.simpmusic.org |
+| 7 | Lrcmux | Timestamped + Word-Level | Musixmatch via api.lrcmux.dev — no token needed |
+
+**Default fallback order**: 2 → 7 → 1 → 3 → 4 → 5 → 6
 
 ## 📦 Installation
 
@@ -76,7 +77,7 @@ pip install -r requirements.txt
 
 # 4. Create .env file
 cp .env.example .env
-# Edit .env and fill in your GENIUS_TOKEN
+# Edit .env and fill in your GENIUS_TOKEN (optional)
 
 # 5. Run the server
 python run.py
@@ -101,11 +102,11 @@ docker run -p 9999:9999 \
 
 ## ⚙️ Configuration
 
-Lyrica uses a two-tier configuration system: environment variables for system deployment (securities, directories), and an optional `.lyrica.config` INI file for user/application level settings.
+Lyrica uses a two-tier configuration system: environment variables for system deployment (secrets, directories), and an optional `.lyrica.config` INI file for user/application level settings.
 
 ### 1. Environment Variables (`.env`)
 
-Create a `.env` file in the project root:
+Create a `.env` file in the project root (copy from `.env.example`):
 
 ```env
 # Secure key to protect admin/management endpoints
@@ -116,6 +117,17 @@ GENIUS_TOKEN=your_token
 
 # Musixmatch client token (Optional, source 6)
 MUSIXMATCH_TOKEN=your_token
+
+# Global proxy — routes ALL fetchers through this proxy
+# Supports comma-separated list for rotation
+# PROXY_URL=http://user:pass@host:port
+
+# YouTube-specific proxy (separate from global proxy)
+# YT_PROXY_URL=http://user:pass@host:port
+
+# YouTube auth file paths (for hosted/containerised deployments)
+# YT_COOKIES_PATH=/absolute/path/to/cookies.txt
+# YT_HEADERS_PATH=/absolute/path/to/headers_auth.json
 
 # Rate limiting storage backend (Recommended: redis://... in production)
 RATE_LIMIT_STORAGE_URI=memory://
@@ -131,7 +143,7 @@ CACHE_DIR=cache_data
 For fine-grained control over fetchers, proxy pools, and rate limits, copy `.lyrica.config.example` to `.lyrica.config` in your project root or home directory.
 
 Features:
-- **Default settings**: Override default request params like `fast`, `timestamps`, `mood`, `metadata`, or the fetcher `sequence`.
+- **Default settings**: Override default request params like `fast`, `timestamps`, `mood`, `metadata`, `word`, or the fetcher `sequence`.
 - **Proxy rotation**: Paste list of socks5/http proxies under `[proxies]` for round-robin rotation.
 - **Rate limits**: Configure requests-per-minute (RPM) limits for each fetcher to avoid IP bans.
 - **Hot Reloading**: Config can watch for changes or be reloaded dynamically via `/config/reload`.
@@ -142,15 +154,21 @@ See [.lyrica.config.example](.lyrica.config.example) for detailed fields.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `ADMIN_KEY` | No | — | Secure key to access admin and management endpoints (e.g. `/admin/cache/clear`, `/config/reload`) |
-| `GENIUS_TOKEN` | No* | — | Genius API token — needed for Genius fetcher. Get at [genius.com/api-clients](https://genius.com/api-clients) |
+| `ADMIN_KEY` | No | — | Secure key to access admin and management endpoints |
+| `GENIUS_TOKEN` | No | — | Genius API token for Genius fetcher |
 | `MUSIXMATCH_TOKEN` | No | — | Musixmatch API token for Musixmatch fetcher |
-| `RATE_LIMIT_STORAGE_URI` | No | `memory://` | Storage backend for rate limiting (e.g. `redis://...`) |
-| `LOG_LEVEL` | No | `INFO` | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
-| `CACHE_TTL` | No | `86400` | Cache time-to-live in seconds |
+| `PROXY_URL` | No | — | Global proxy URL for all fetchers (comma-separated list supported) |
+| `YT_PROXY_URL` | No | — | YouTube-only proxy URL |
+| `YT_COOKIES_PATH` | No | — | Absolute path to cookies.txt (used by yt-dlp Layer 3) |
+| `YT_HEADERS_PATH` | No | — | Absolute path to headers_auth.json (used by ytmusicapi) |
+| `RATE_LIMIT_STORAGE_URI` | No | `memory://` | Storage backend for rate limiting |
+| `LOG_LEVEL` | No | `INFO` | Logging level |
+| `CACHE_TTL` | No | `86400` | Cache TTL in seconds |
 | `CACHE_DIR` | No | `cache_data` | Directory for cache files |
+| `GROQ_API_KEY` | No | — | Groq API key(s) for translation/romanization (comma-separated) |
+| `GROQ_MODEL` | No | `llama-3.3-70b-versatile` | Groq model to use |
 
-\* Lyrica still works without Genius or Musixmatch tokens — these sources will simply be skipped.
+\* Lyrica still works without any tokens — those sources are simply skipped.
 
 
 ## 🚀 Deployment
@@ -181,12 +199,17 @@ gunicorn -w 4 -b 127.0.0.1:9999 --timeout 120 run:app
 
 ### Basic Lyrics
 ```bash
-curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho"
+curl "http://127.0.0.1:9999/lyrics/?artist=Coldplay&song=Yellow"
 ```
 
-### With Timestamps
+### Line-Level Timestamps
 ```bash
-curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&timestamps=true"
+curl "http://127.0.0.1:9999/lyrics/?artist=Coldplay&song=Yellow&timestamps=true"
+```
+
+### Word-Level Sync (for karaoke / lyric highlighting)
+```bash
+curl "http://127.0.0.1:9999/lyrics/?artist=Coldplay&song=Yellow&timestamps=true&word=true"
 ```
 
 ### With Mood Analysis
@@ -214,7 +237,7 @@ curl "http://127.0.0.1:9999/trending/?country=IN&limit=10"
 curl "http://127.0.0.1:9999/suggestion?q=Tum%20Hi%20Ho&limit=5"
 ```
 
-### Lyrics Translation & Transliteration (New)
+### Lyrics Translation & Transliteration
 ```bash
 # Get translated and romanized synced lyrics
 curl "http://127.0.0.1:9999/lyrics/?artist=Karan%20Aujla&song=Boyfriend&timestamps=true&translate=true&romanize=true&language=en"
@@ -238,7 +261,8 @@ curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&tra
 
 ### YouTube Music Blocks & Rate Limits
 - YouTube Music fetcher runs a robust 3-layer fallback system (ytmusicapi → transcript-api → yt-dlp subtitles) which does not require cookies out of the box!
-- If your IP gets rate-limited by YouTube, set up the proxy pool in `.lyrica.config` to rotate requests.
+- If your IP gets rate-limited by YouTube, set `YT_PROXY_URL` in `.env` to route through a proxy.
+- For containerised deployments, use `YT_COOKIES_PATH` and `YT_HEADERS_PATH` env vars instead of placing files in the project root.
 
 ### Rate Limit Issues (Flask-Limiter)
 - The local server limits clients to 15 requests per minute per IP.
@@ -254,6 +278,7 @@ if __name__ == '__main__':
 ## 📖 Documentation
 
 - **Full API Reference**: See [USER_GUIDE.md](USER_GUIDE.md)
+- **Word-Level Sync Guide**: See [WORD_SYNC_GUIDE.md](WORD_SYNC_GUIDE.md)
 - **Lyrics Translation Guide**: See [TRANSLATION_GUIDE.md](TRANSLATION_GUIDE.md)
 - **Setup Details**: See [SETUP_GUIDE.md](SETUP_GUIDE.md)
 - **Issues**: Open GitHub issues for bugs or feature requests
@@ -316,7 +341,7 @@ See [LICENSE](LICENSE) file for details.
 
 - **sigma67** — [ytmusicapi](https://github.com/sigma67/ytmusicapi)
 - **tranxuanthang & LrcLib Team** — LRC lyrics support
-- **maxrave-dev** — SimpMusic integration
+- **lrcmux team** — Musixmatch aggregation without a token
 - **JioSaavn** — Music metadata and streaming
 - **syncedlyrics** — NetEase, Megalobiz, Musixmatch integration
 - **MusicBrainz** — Song suggestion/autocomplete data
@@ -329,7 +354,7 @@ See [LICENSE](LICENSE) file for details.
 - **Email**: wiloooper@proton.me
 
 ---
-**Current Version**: 1.3.0
+**Current Version**: 1.4.0
 
 **Reference**: GitHub release metadata and the current API health response
 

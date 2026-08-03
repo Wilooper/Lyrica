@@ -35,6 +35,22 @@ def create_app():
     except Exception as e:
         app.logger.warning(f"User config load failed (proceeding with defaults): {e}")
         app.config["USER_CONFIG"] = None
+
+    # ── Global proxy pool — seed from PROXY_URL env var ───────────────────────
+    # PROXY_URL is for ALL fetchers. Supports a single URL or comma-separated list.
+    # YT_PROXY_URL remains YouTube-only (handled inside youtube_fetcher.py).
+    try:
+        from src.proxy_manager import get_proxy_manager as _get_pm
+        proxy_env = os.getenv("PROXY_URL", "").strip()
+        if proxy_env:
+            _pm = _get_pm()
+            for _url in [u.strip() for u in proxy_env.split(",") if u.strip()]:
+                if _pm.add(_url):
+                    app.logger.info(f"Global proxy loaded from PROXY_URL env var: {_url[:20]}***")
+                else:
+                    app.logger.warning(f"Global proxy URL invalid or already in pool (skipped)")
+    except Exception as e:
+        app.logger.warning(f"Failed to load PROXY_URL: {e}")
     
     # Rate limiting: per-IP key, default "15 per minute".
     # Use RATE_LIMIT_STORAGE_URI to set a Redis (recommended) or another backend.

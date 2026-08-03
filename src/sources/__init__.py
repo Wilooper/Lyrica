@@ -47,6 +47,7 @@ _try_import("youtube",    "src.sources.youtube_fetcher",     "YoutubeFetcher")
 _try_import("netease",    "src.sources.netease_fetcher",     "NetEaseFetcher")
 _try_import("megalobiz",  "src.sources.megalobiz_fetcher",   "MegalobizFetcher")
 _try_import("musixmatch", "src.sources.musixmatch_fetcher",  "MusixmatchFetcher")
+_try_import("lrcmux",     "src.sources.lrcmux_fetcher",      "LrcmuxFetcher")
 
 # ── Disabled fetchers (do NOT load into ALL_FETCHERS) ────────────────────────
 # _try_import("simpmusic",   "src.sources.simp_music_fetcher",  "SimpMusicFetcher")   # removed

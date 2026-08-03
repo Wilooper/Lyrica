@@ -53,3 +53,8 @@ desktop.ini
 security/*.key
 security/*.pem
 security/*.p12
+
+# ── Test result files (generated during integration tests) ───────────────────
+Test/lrcmux/result_*.json
+Test/lrcmux/server.log
+Test/lrcmux/lyrics_response.json

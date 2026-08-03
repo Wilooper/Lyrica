@@ -26,11 +26,15 @@
 # fast       = false        ; Use fast parallel mode by default
 # translate  = false        ; Translate lyrics to target language by default
 # romanize   = false        ; Romanize/transliterate lyrics by default
+# word       = false        ; Request word-level synced lyrics when timestamps=true
+#                           ;   Only affects Lrcmux (source 7); other sources are unaffected.
+#                           ;   Override per-request with &word=true
 # language   = en           ; Default target language for translate/romanize
 #                           ;   Examples: en, hindi, spanish, japanese, french
 # sequence   = 1,2,3        ; Default fetcher sequence (comma-separated IDs)
 #                           ;   1=Genius 2=LRCLIB 3=YouTube 4=NetEase
-#                           ;   5=Megalobiz 6=Musixmatch
+#                           ;   5=Megalobiz 6=Musixmatch 7=Lrcmux
+#                           ;   Default order: 2,7,1,3,4,5,6 (lrclib → lrcmux → ...)
 
 
 [reload]
@@ -52,6 +56,7 @@
 # netease_rpm     = 20
 # megalobiz_rpm   = 15
 # musixmatch_rpm  = 15    ; requires MUSIXMATCH_TOKEN env var to be active
+# lrcmux_rpm      = 30
 
 
 [proxies]
@@ -64,6 +69,10 @@
 # proxy_3 = https://host:port
 
 # persist = false     ; If true, proxies added via /v2/proxy/set are saved here.
+
+# TIP: You can also set PROXY_URL in your .env file to load proxies at startup
+#      without editing this file. PROXY_URL is more secure for hosted deployments.
+#      Example: PROXY_URL=http://user:pass@host:port
 
 
 [cache]

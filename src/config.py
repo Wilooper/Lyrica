@@ -27,6 +27,9 @@ GENIUS_TOKEN = os.getenv("GENIUS_TOKEN", "")
 # lrclib
 LRCLIB_API_URL = os.getenv("LRCLIB_API_URL", "https://lrclib.net/api/get")
 
+# lrcmux
+LRCMUX_API_URL = os.getenv("LRCMUX_API_URL", "https://api.lrcmux.dev")
+
 # Rate limiting storage backend (recommended: Redis for production)
 # Example: redis://:password@redis-host:6379/0
 RATE_LIMIT_STORAGE_URI = os.getenv("RATE_LIMIT_STORAGE_URI", "memory://")

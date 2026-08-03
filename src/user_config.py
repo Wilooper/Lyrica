@@ -50,6 +50,7 @@ class UserConfig:
 	default_fast: bool = False
 	default_translate: bool = False
 	default_romanize: bool = False
+	default_word: bool = False
 	default_language: str = "en"
 	default_sequence: list[int] = field(default_factory=lambda: [1, 2, 3, 4, 5, 6, 7])
 	reload_on_config_change: bool = False
@@ -59,6 +60,7 @@ class UserConfig:
 	netease_rpm: int = 20
 	megalobiz_rpm: int = 15
 	musixmatch_rpm: int = 15
+	lrcmux_rpm: int = 30
 	fast_timeout: int = 20
 	request_timeout: int = 60
 	cache_ttl: int | None = None
@@ -75,6 +77,7 @@ class UserConfig:
 				"fast": self.default_fast,
 				"translate": self.default_translate,
 				"romanize": self.default_romanize,
+				"word": self.default_word,
 				"language": self.default_language,
 				"sequence": self.default_sequence,
 			},
@@ -86,6 +89,7 @@ class UserConfig:
 				"netease_rpm": self.netease_rpm,
 				"megalobiz_rpm": self.megalobiz_rpm,
 				"musixmatch_rpm": self.musixmatch_rpm,
+				"lrcmux_rpm": self.lrcmux_rpm,
 			},
 			"proxies": {"items": self.proxies, "persist": False},
 			"cache": {"ttl": self.cache_ttl, "dir": self.cache_dir},
@@ -120,6 +124,7 @@ def _load_from_path(path: Path) -> UserConfig:
 		cfg.default_fast = _parse_bool(defaults.get("fast"), cfg.default_fast)
 		cfg.default_translate = _parse_bool(defaults.get("translate"), cfg.default_translate)
 		cfg.default_romanize = _parse_bool(defaults.get("romanize"), cfg.default_romanize)
+		cfg.default_word = _parse_bool(defaults.get("word"), cfg.default_word)
 		cfg.default_language = (defaults.get("language") or cfg.default_language).strip().lower()
 		cfg.default_sequence = _parse_sequence(defaults.get("sequence"))
 
@@ -134,6 +139,7 @@ def _load_from_path(path: Path) -> UserConfig:
 		cfg.netease_rpm = _parse_int(rate_limits.get("netease_rpm"), cfg.netease_rpm)
 		cfg.megalobiz_rpm = _parse_int(rate_limits.get("megalobiz_rpm"), cfg.megalobiz_rpm)
 		cfg.musixmatch_rpm = _parse_int(rate_limits.get("musixmatch_rpm"), cfg.musixmatch_rpm)
+		cfg.lrcmux_rpm = _parse_int(rate_limits.get("lrcmux_rpm"), cfg.lrcmux_rpm)
 
 	if parser.has_section("cache"):
 		cache = parser["cache"]

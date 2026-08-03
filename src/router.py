@@ -256,6 +256,7 @@ def register_routes(app):
                     "4": "NetEase (via syncedlyrics, synced LRC)",
                     "5": "Megalobiz (via syncedlyrics, synced LRC)",
                     "6": "Musixmatch (via syncedlyrics, optional MUSIXMATCH_TOKEN)",
+                    "7": "Lrcmux (via api.lrcmux.dev, Musixmatch lyrics; supports word-level sync with &word=true)"
                 }
             }
         )
@@ -286,6 +287,7 @@ def register_routes(app):
         include_metadata  = request.args.get("metadata", str(cfg.default_metadata if cfg else False)).lower() == "true"
         do_translate = request.args.get("translate", str(cfg.default_translate if cfg else False)).lower() == "true"
         do_romanize  = request.args.get("romanize",  str(cfg.default_romanize  if cfg else False)).lower() == "true"
+        word_level   = request.args.get("word",      str(cfg.default_word      if cfg else False)).lower() == "true"
         target_language = request.args.get("language", cfg.default_language if cfg else "en").strip().lower()
         _fast_timeout = cfg.fast_timeout if cfg else 20
 
@@ -315,7 +317,8 @@ def register_routes(app):
 
         logger.info(
             f"Lyrics request: {artist} - {song} (fast={fast_mode}, mood={analyze_mood}, "
-            f"metadata={include_metadata}, translate={do_translate}, romanize={do_romanize}, lang={target_language})"
+            f"metadata={include_metadata}, translate={do_translate}, romanize={do_romanize}, "
+            f"word={word_level}, lang={target_language})"
         )
 
         # Record user query for analytics
@@ -333,6 +336,7 @@ def register_routes(app):
             artist, song, timestamps, sequence, fast_mode,
             analyze_mood, include_metadata,
             translate=do_translate, romanize=do_romanize, language=target_language,
+            word_level=word_level,
         )
         cached = load_from_cache(cache_key)
 
@@ -351,6 +355,7 @@ def register_routes(app):
                     sequence=sequence,
                     fast_mode=fast_mode,
                     fast_timeout=_fast_timeout,
+                    word_level=word_level,
                 ),
                 timeout=60
             )

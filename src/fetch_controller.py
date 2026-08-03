@@ -7,7 +7,7 @@ import asyncio
 from src.sources import ALL_FETCHERS
 
 
-_SOURCE_ORDER = ["genius", "lrclib", "youtube", "netease", "megalobiz", "musixmatch"]
+_SOURCE_ORDER = ["lrclib", "lrcmux", "genius", "youtube", "netease", "megalobiz", "musixmatch"]
 _SOURCE_BY_ID = {
 	1: "genius",
 	2: "lrclib",
@@ -15,6 +15,7 @@ _SOURCE_BY_ID = {
 	4: "netease",
 	5: "megalobiz",
 	6: "musixmatch",
+	7: "lrcmux",
 }
 
 
@@ -43,14 +44,14 @@ def _normalize_sequence(sequence) -> list[str]:
 	return normalized
 
 
-async def _try_fetcher(source_name: str, artist: str, song: str, timestamps: bool):
+async def _try_fetcher(source_name: str, artist: str, song: str, timestamps: bool, word_level: bool = False):
 	fetcher = ALL_FETCHERS.get(source_name)
 	if not fetcher:
 		return None
 
 	try:
-		if source_name == "lrclib":
-			return await fetcher.fetch(artist, song, timestamps=timestamps)
+		if source_name == "lrcmux":
+			return await fetcher.fetch(artist, song, timestamps=timestamps, word_level=word_level)
 		return await fetcher.fetch(artist, song, timestamps=timestamps)
 	except Exception:
 		return None
@@ -70,13 +71,14 @@ async def fetch_lyrics_controller(
 	sequence=None,
 	fast_mode: bool = False,
 	fast_timeout: int = 20,
+	word_level: bool = False,
 ) -> dict:
 	source_names = _normalize_sequence(sequence)
 	if not pass_param and sequence is None:
 		source_names = [name for name in _SOURCE_ORDER if name in ALL_FETCHERS]
 
 	if fast_mode and len(source_names) > 1:
-		tasks = [asyncio.create_task(_try_fetcher(name, artist, song, timestamps)) for name in source_names]
+		tasks = [asyncio.create_task(_try_fetcher(name, artist, song, timestamps, word_level)) for name in source_names]
 		try:
 			done, pending = await asyncio.wait(tasks, timeout=fast_timeout, return_when=asyncio.FIRST_COMPLETED)
 			for task in done:
@@ -102,7 +104,7 @@ async def fetch_lyrics_controller(
 					task.cancel()
 
 	for source_name in source_names:
-		result = await _try_fetcher(source_name, artist, song, timestamps)
+		result = await _try_fetcher(source_name, artist, song, timestamps, word_level)
 		if result and (not timestamps or _is_timestamped_result(result)):
 			return {"status": "success", "data": result}
 

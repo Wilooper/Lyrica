@@ -22,6 +22,7 @@ def make_cache_key(
     translate: bool = False,
     romanize: bool = False,
     language: str = "en",
+    word_level: bool = False,
 ) -> str:
     """
     Collision-safe, filesystem-safe cache key
@@ -39,6 +40,7 @@ def make_cache_key(
         "translate": bool(translate),
         "romanize": bool(romanize),
         "language": (language or "en").strip().lower(),
+        "word_level": bool(word_level),
     }
 
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False)
