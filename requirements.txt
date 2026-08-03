@@ -52,7 +52,7 @@ groq==1.6.0                  # Official Groq SDK for llama-3.3-70b-versatile
 # xml.etree.ElementTree is stdlib — no extra package needed
 
 # ── HTTP (kept for metadata_extractor — sync parallel via ThreadPoolExecutor) ─
-requests==2.32.3
+requests==2.33.0
 
 # ── Optional: Redis backend for Flask-Limiter (recommended for production) ───
 # redis==5.0.6
