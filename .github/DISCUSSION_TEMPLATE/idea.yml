@@ -1,0 +1,22 @@
+title: "[Idea]: "
+labels: ["enhancement", "idea"]
+body:
+  - type: markdown
+    attributes:
+      value: "Thanks for taking the time to share an idea to improve this project!"
+  - type: textarea
+    id: problem
+    attributes:
+      label: "Problem or Use Case"
+      description: "Is your idea related to a problem or a missing feature? Describe it clearly."
+      placeholder: "I find it difficult to..."
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: "Proposed Solution"
+      description: "Describe how you'd like this to work."
+      placeholder: "Add a setting/button/endpoint that..."
+    validations:
+      required: true
