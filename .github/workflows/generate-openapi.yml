@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - '**.py'
+    workflow_dispatch: # <--- ADD THIS LINE (Allows manual trigger)
 
 permissions:
   contents: write
