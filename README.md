@@ -13,6 +13,7 @@ A Flask-based lyrics API for plain and timestamped lyrics, metadata, sentiment a
 ## Before You Start
 - This is the Flask version. If you want the FastAPI version, visit:
   https://github.com/Wilooper/LyricaV2.git
+- Access the api docs and test the full api [here.](https://wilooper.github.io/lyrica-api/)
 
 ## ✨ Key Features
 
