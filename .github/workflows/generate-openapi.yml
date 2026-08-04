@@ -4,12 +4,11 @@ on:
   push:
     branches:
       - main
-    paths:
-      - '**.py'
-    workflow_dispatch: # <--- ADD THIS LINE (Allows manual trigger)
+      - master  # Supports both 'main' and 'master' default branches
+  workflow_dispatch:  # Enables the "Run workflow" button in Actions tab for manual testing
 
 permissions:
-  contents: write
+  contents: write  # Gives GitHub Actions permission to commit openapi.json
 
 jobs:
   generate-spec:
