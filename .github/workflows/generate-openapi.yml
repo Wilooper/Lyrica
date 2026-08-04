@@ -1,0 +1,33 @@
+name: Generate OpenAPI Specs (AST Static Analysis)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '**.py'
+
+permissions:
+  contents: write
+
+jobs:
+  generate-spec:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run Static Parser
+        run: python scripts/parse_flask_routes.py
+
+      - name: Commit openapi.json back to Repo
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "docs: update auto-generated openapi.json [skip ci]"
+          file_pattern: "openapi.json"
