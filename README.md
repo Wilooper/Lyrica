@@ -194,7 +194,7 @@ gunicorn -w 4 -b 127.0.0.1:9999 --timeout 120 run:app
 - If you don't want to self-host, you can use the prehosted server. All endpoints are the same as on localhost.
 - **Link 1**: https://test-0k.onrender.com/
 - **Link 2 (Recommended for production)**: https://wilooper-lyrica.hf.space/
-  - The Hugging Face version is designed to handle thousands of simultaneous users with ~95% uptime.
+  - The Hugging Face version is designed to handle thousands of simultaneous users with ~95% uptime but remember that any endpoint or tool that requires any type of key,cookie etc will nnot work as nothing is seted in this instance so to use lyrica's full power selfhost this project will all and proper configuration thanks for reading!!.
   
 ## 📚 Quick API Examples
 
