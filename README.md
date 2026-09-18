@@ -237,6 +237,13 @@ Please ensure code adheres to PEP 8 standards and new features include documenta
 	<tbody>
 		<tr>
             <td align="center">
+                <a href="https://github.com/Wilooper">
+                    <img src="https://avatars.githubusercontent.com/u/198341775?v=4" width="100;" alt="Wilooper"/>
+                    <br />
+                    <sub><b>Shaurya singh</b></sub>
+                </a>
+            </td>
+            <td align="center">
                 <a href="https://github.com/thinkely">
                     <img src="https://avatars.githubusercontent.com/u/321372956?v=4" width="100;" alt="thinkely"/>
                     <br />
