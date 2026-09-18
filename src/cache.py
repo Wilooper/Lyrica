@@ -288,6 +288,7 @@ def cache_stats() -> Dict[str, Any]:
         "memory_l1_items": _MEMORY_CACHE.size(),
         "redis_l2": redis_info,
         "disk_l3_files": len(disk_files),
+        "cache_files": len(disk_files),
         "cache_dir": CACHE_DIR,
         "ttl_seconds": CACHE_TTL,
         "version": CACHE_VERSION,
