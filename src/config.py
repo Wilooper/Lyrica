@@ -37,12 +37,17 @@ LRCLIB_API_URL = os.getenv("LRCLIB_API_URL", "https://lrclib.net/api/get")
 # lrcmux
 LRCMUX_API_URL = os.getenv("LRCMUX_API_URL", "https://api.lrcmux.dev")
 
+# Redis connection URL (optional — enables L2 distributed cache across workers/containers)
+# Example: redis://:password@redis-host:6379/0 or redis://localhost:6379/0
+REDIS_URL = os.getenv("REDIS_URL", "")
+
 # Rate limiting storage backend (recommended: Redis for production)
 # Example: redis://:password@redis-host:6379/0
-RATE_LIMIT_STORAGE_URI = os.getenv("RATE_LIMIT_STORAGE_URI", "memory://")
+RATE_LIMIT_STORAGE_URI = os.getenv("RATE_LIMIT_STORAGE_URI", REDIS_URL or "memory://")
 
 # ── Groq AI (Translation & Romanization) ────────────────────────────────────
 # Comma-separated list of API keys for load balancing:
 #   GROQ_API_KEY=gsk_abc123,gsk_def456,gsk_ghi789
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+

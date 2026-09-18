@@ -1,6 +1,6 @@
 # 🌐 Lyrica — Lyrics Translation & Romanization Guide
 
-Lyrica includes built-in real-time lyrics translation and romanization (transliteration) powered by **Groq LLM** (`llama-3.3-70b-versatile`). 
+Lyrica includes built-in real-time lyrics translation and romanization (transliteration) powered by **Groq LLM** (`openai/gpt-oss-120b`). 
 
 This feature operates seamlessly on both **synced timestamped LRC lyrics** and **unsynced plain text lyrics**, making foreign language tracks accessible to global listeners.
 
@@ -31,11 +31,11 @@ GROQ_API_KEY=gsk_your_groq_api_key_here
 # Multiple Keys (Comma-Separated for Load Balancing & Failover):
 GROQ_API_KEY=gsk_key1,gsk_key2,gsk_key3
 
-# Custom Groq Model (Optional, default: llama-3.3-70b-versatile)
+# Custom Groq Model (Optional, default: openai/gpt-oss-120b)
 # Note: Groq may deprecate or remove support for specific models at any time.
-# If llama-3.3-70b-versatile becomes unavailable, set GROQ_MODEL to any other
+# If openai/gpt-oss-120b becomes unavailable, set GROQ_MODEL to any other
 # available Groq model of your preference from https://console.groq.com/docs/models
-GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_MODEL=openai/gpt-oss-120b
 ```
 
 ### 🛡️ Smart Multi-Key Pool & Cooldowns
@@ -81,7 +81,7 @@ curl "http://127.0.0.1:9999/lyrics/?artist=Karan%20Aujla&song=Boyfriend&timestam
     "hasTimestamps": true,
     "translation_metadata": {
       "target_language": "en",
-      "processed_by": "groq/llama-3.3-70b-versatile",
+      "processed_by": "groq/openai/gpt-oss-120b",
       "cached_from": "fresh"
     },
     "timed_lyrics": [
@@ -119,7 +119,7 @@ curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&tra
     "romanized_lyrics": "Hum tere bin ab reh nahi sakte\nTere bina kya wajood mera",
     "translation_metadata": {
       "target_language": "en",
-      "processed_by": "groq/llama-3.3-70b-versatile",
+      "processed_by": "groq/openai/gpt-oss-120b",
       "cached_from": "fresh"
     }
   }

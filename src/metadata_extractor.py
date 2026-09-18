@@ -1,174 +1,172 @@
-import requests
-import logging
-from typing import Optional, Dict
+import asyncio
+import re
+import urllib.parse
+from typing import Optional, Dict, Any
 from functools import lru_cache
-from datetime import datetime
-from bs4 import BeautifulSoup
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
+import httpx
+from src.logger import get_logger
+from src.sources.base_fetcher import get_http_client
 
-logger = logging.getLogger("metadata_extractor")
+logger = get_logger("metadata_extractor")
 
-# APIs we'll use (all free, no auth required)
+# Free APIs (no auth required)
 COVER_ART_API = "https://coverartarchive.org"
 MUSICBRAINZ_API = "https://musicbrainz.org/ws/2"
 WIKIPEDIA_API = "https://en.wikipedia.org/api/rest_v1"
 ITUNES_API = "https://itunes.apple.com/search"
 
-def get_musicbrainz_metadata(artist: str, song: str) -> Optional[Dict]:
-    """
-    Get metadata from MusicBrainz API (free, no auth required)
-    Returns: MBID, recording info, release info, tags, etc.
-    """
+# Common browser headers
+_HEADERS = {
+    "User-Agent": "Lyrica/1.5.0 (https://github.com/thinkely/Lyrica)",
+    "Accept": "application/json, text/html, */*",
+}
+
+
+async def get_musicbrainz_metadata(artist: str, song: str, client: Optional[httpx.AsyncClient] = None) -> Optional[Dict]:
+    """Get metadata from MusicBrainz API (non-blocking async)."""
+    http_cli = client or get_http_client()
     try:
-        # Search for recording with additional includes for more data
-        headers = {
-            "User-Agent": "Lyrica/1.0 (lyrics API)"
-        }
         params = {
             "query": f'"{song}" AND artist:"{artist}"',
             "fmt": "json",
             "limit": 1,
-            "inc": "tags+releases+artist-credits"  # Enhanced: Include tags and artist credits
+            "inc": "tags+releases+artist-credits",
         }
-        
-        response = requests.get(
+        resp = await http_cli.get(
             f"{MUSICBRAINZ_API}/recording",
             params=params,
-            headers=headers,
-            timeout=5
+            headers=_HEADERS,
+            timeout=5.0,
         )
-        
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("recordings") and len(data["recordings"]) > 0:
-                recording = data["recordings"][0]
+        if resp.status_code == 200:
+            data = resp.json()
+            recordings = data.get("recordings", [])
+            if recordings:
                 logger.info(f"Found MusicBrainz metadata: {artist} - {song}")
-                return recording
-        
-        logger.warning(f"MusicBrainz: Track not found: {artist} - {song}")
+                return recordings[0]
+
+        logger.debug(f"MusicBrainz: Track not found: {artist} - {song}")
         return None
     except Exception as e:
-        logger.error(f"MusicBrainz error: {str(e)}")
+        logger.debug(f"MusicBrainz error: {e}")
         return None
 
-def get_wikipedia_summary(artist: str, song: str) -> Optional[Dict]:
-    """
-    Get summary from Wikipedia API (free, no auth required)
-    Searches for the song page and returns extract, thumbnail, etc.
-    """
+
+async def get_wikipedia_summary(artist: str, song: str, client: Optional[httpx.AsyncClient] = None) -> Optional[Dict]:
+    """Get summary from Wikipedia API (non-blocking async)."""
+    http_cli = client or get_http_client()
     try:
-        # Construct potential page title (e.g., "Song Title (song)")
-        page_title = f"{song} (song)"
-        url = f"{WIKIPEDIA_API}/page/summary/{requests.utils.quote(page_title)}"
-        
-        headers = {
-            "User-Agent": "Lyrica/1.0 (lyrics API)"
-        }
-        
-        response = requests.get(url, headers=headers, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
+        # Try "{song} (song)"
+        page_title = urllib.parse.quote(f"{song} (song)")
+        url = f"{WIKIPEDIA_API}/page/summary/{page_title}"
+        resp = await http_cli.get(url, headers=_HEADERS, timeout=5.0)
+
+        if resp.status_code == 200:
+            data = resp.json()
             if "extract" in data:
                 logger.info(f"Found Wikipedia summary for: {artist} - {song}")
                 return {
                     "description": data.get("extract", ""),
                     "thumbnail": data.get("thumbnail", {}).get("source", ""),
-                    "url": data.get("content_urls", {}).get("desktop", {}).get("page", "")
+                    "url": data.get("content_urls", {}).get("desktop", {}).get("page", ""),
                 }
-        
+
         # Fallback: Try without "(song)"
-        page_title = song
-        url = f"{WIKIPEDIA_API}/page/summary/{requests.utils.quote(page_title)}"
-        response = requests.get(url, headers=headers, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            if "extract" in data:
+        page_title_fallback = urllib.parse.quote(song)
+        url_fallback = f"{WIKIPEDIA_API}/page/summary/{page_title_fallback}"
+        resp_fb = await http_cli.get(url_fallback, headers=_HEADERS, timeout=5.0)
+        if resp_fb.status_code == 200:
+            data_fb = resp_fb.json()
+            if "extract" in data_fb:
                 logger.info(f"Found Wikipedia fallback summary for: {artist} - {song}")
                 return {
-                    "description": data.get("extract", ""),
-                    "thumbnail": data.get("thumbnail", {}).get("source", ""),
-                    "url": data.get("content_urls", {}).get("desktop", {}).get("page", "")
+                    "description": data_fb.get("extract", ""),
+                    "thumbnail": data_fb.get("thumbnail", {}).get("source", ""),
+                    "url": data_fb.get("content_urls", {}).get("desktop", {}).get("page", ""),
                 }
-        
-        logger.warning(f"Wikipedia: Page not found for {artist} - {song}")
+
         return None
     except Exception as e:
-        logger.error(f"Wikipedia error: {str(e)}")
+        logger.debug(f"Wikipedia error: {e}")
         return None
 
-def get_itunes_metadata(artist: str, song: str) -> Optional[Dict]:
-    """
-    Get metadata from iTunes Search API (free, no auth required)
-    Returns: album, artwork, release date, duration, genre, etc.
-    """
+
+async def get_itunes_metadata(artist: str, song: str, client: Optional[httpx.AsyncClient] = None) -> Optional[Dict]:
+    """Get metadata from iTunes Search API (non-blocking async)."""
+    http_cli = client or get_http_client()
     try:
-        term = f"{artist} {song}"
         params = {
-            "term": term,
+            "term": f"{artist} {song}",
             "entity": "song",
-            "limit": 1
+            "limit": 1,
         }
-        response = requests.get(ITUNES_API, params=params, timeout=5)
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("resultCount", 0) > 0:
-                track = data["results"][0]
+        resp = await http_cli.get(ITUNES_API, params=params, headers=_HEADERS, timeout=5.0)
+        if resp.status_code == 200:
+            data = resp.json()
+            results = data.get("results", [])
+            if results:
+                track = results[0]
                 logger.info(f"Found iTunes metadata: {artist} - {song}")
                 return {
                     "title": track.get("trackName", song),
                     "artist": track.get("artistName", artist),
                     "album": track.get("collectionName", ""),
-                    "album_art": track.get("artworkUrl100", "").replace("100x100bb.jpg", "1200x1200bb.jpg") if track.get("artworkUrl100") else "",
+                    "album_art": (
+                        track.get("artworkUrl100", "").replace("100x100bb.jpg", "1200x1200bb.jpg")
+                        if track.get("artworkUrl100") else ""
+                    ),
                     "release_date": track.get("releaseDate", "")[:10] if track.get("releaseDate") else "",
                     "duration_ms": track.get("trackTimeMillis", 0),
                     "genre": track.get("primaryGenreName", ""),
-                    "url": track.get("trackViewUrl", "")
+                    "url": track.get("trackViewUrl", ""),
                 }
-        
-        logger.warning(f"iTunes: Track not found: {artist} - {song}")
+
         return None
     except Exception as e:
-        logger.error(f"iTunes error: {str(e)}")
+        logger.debug(f"iTunes error: {e}")
         return None
 
-def get_lastfm_metadata(artist: str, song: str) -> Optional[Dict]:
-    """
-    Scrape metadata from Last.fm public page (no API key required)
-    Returns: playcount, listeners, tags, etc.
-    """
+
+# Regex patterns for fast HTML parsing without bs4 overhead
+_LASTFM_LISTENERS_RE = re.compile(r'data-analytics-label="listener_count"[^>]*>.*?<[a-zA-Z0-9_-]+[^>]*class="[^"]*metadata-display[^"]*"[^>]*>([^<]+)<', re.DOTALL)
+_LASTFM_SCROBBLES_RE = re.compile(r'data-analytics-label="scrobble_count"[^>]*>.*?<[a-zA-Z0-9_-]+[^>]*class="[^"]*metadata-display[^"]*"[^>]*>([^<]+)<', re.DOTALL)
+_LASTFM_TAGS_RE = re.compile(r'<a[^>]*href="[^"]*/tag/[^"]*"[^>]*>([^<]+)</a>', re.DOTALL)
+_LASTFM_ALBUM_RE = re.compile(r'class="[^"]*header-metadata-title[^"]*"[^>]*><a[^>]*>([^<]+)</a>', re.DOTALL)
+
+
+async def get_lastfm_metadata(artist: str, song: str, client: Optional[httpx.AsyncClient] = None) -> Optional[Dict]:
+    """Scrape metadata from Last.fm using fast non-blocking regex extraction (no bs4)."""
+    http_cli = client or get_http_client()
     try:
-        url = f"https://www.last.fm/music/{requests.utils.quote(artist)}/_/{requests.utils.quote(song)}"
-        headers = {"User-Agent": "Lyrica/1.0 (lyrics API)"}
-        response = requests.get(url, headers=headers, timeout=5)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
+        url = f"https://www.last.fm/music/{urllib.parse.quote(artist)}/_/{urllib.parse.quote(song)}"
+        resp = await http_cli.get(url, headers=_HEADERS, timeout=5.0)
+        if resp.status_code == 200:
+            html = resp.text
+
             # Extract listeners
-            listeners_elem = soup.select_one('li[data-analytics-label="listener_count"] .metadata-display')
             listeners = 0
-            if listeners_elem:
-                listeners_text = listeners_elem.text.strip().replace(',', '')
-                if listeners_text.isdigit():
-                    listeners = int(listeners_text)
-            
+            lm = _LASTFM_LISTENERS_RE.search(html)
+            if lm:
+                digits = re.sub(r"[^\d]", "", lm.group(1))
+                if digits.isdigit():
+                    listeners = int(digits)
+
             # Extract playcount (scrobbles)
-            playcount_elem = soup.select_one('li[data-analytics-label="scrobble_count"] .metadata-display')
             playcount = 0
-            if playcount_elem:
-                playcount_text = playcount_elem.text.strip().replace(',', '')
-                if playcount_text.isdigit():
-                    playcount = int(playcount_text)
-            
+            pm = _LASTFM_SCROBBLES_RE.search(html)
+            if pm:
+                digits = re.sub(r"[^\d]", "", pm.group(1))
+                if digits.isdigit():
+                    playcount = int(digits)
+
             # Extract tags
-            tags = []
-            tag_elements = soup.select('.tags-list--global a')
-            for tag in tag_elements[:7]:
-                tags.append(tag.text.strip())
-            
-            # Extract album if available
-            album_elem = soup.select_one('.header-metadata-title a')
-            album = album_elem.text.strip() if album_elem else ""
-            
+            tags = [t.strip() for t in _LASTFM_TAGS_RE.findall(html)[:7] if t.strip()]
+
+            # Extract album
+            am = _LASTFM_ALBUM_RE.search(html)
+            album = am.group(1).strip() if am else ""
+
             if listeners or playcount or tags:
                 logger.info(f"Found Last.fm scraped metadata: {artist} - {song}")
                 return {
@@ -176,103 +174,77 @@ def get_lastfm_metadata(artist: str, song: str) -> Optional[Dict]:
                     "listeners": listeners,
                     "tags": tags,
                     "album": album,
-                    "url": url
+                    "url": url,
                 }
-        
-        logger.warning(f"Last.fm: Track not found: {artist} - {song}")
+
         return None
     except Exception as e:
-        logger.error(f"Last.fm scrape error: {str(e)}")
+        logger.debug(f"Last.fm scrape error: {e}")
         return None
 
-def get_cover_art(mbid: str) -> Optional[str]:
-    """
-    Get album cover art from Cover Art Archive (free)
-    MBID should come from MusicBrainz
-    """
+
+async def get_cover_art(mbid: str, client: Optional[httpx.AsyncClient] = None) -> Optional[str]:
+    """Get album cover art from Cover Art Archive."""
+    if not mbid:
+        return None
+    http_cli = client or get_http_client()
     try:
-        if not mbid:
-            return None
-        
-        response = requests.get(
+        resp = await http_cli.get(
             f"{COVER_ART_API}/release/{mbid}/front",
-            timeout=5,
-            allow_redirects=True
+            headers=_HEADERS,
+            timeout=5.0,
+            follow_redirects=True,
         )
-        
-        if response.status_code == 200:
-            logger.info(f"Found cover art for MBID: {mbid}")
+        if resp.status_code == 200:
             return f"{COVER_ART_API}/release/{mbid}/front"
-        
         return None
-    except Exception as e:
-        logger.error(f"Cover Art error: {str(e)}")
+    except Exception:
         return None
 
-@lru_cache(maxsize=500)
-def get_song_metadata(artist: str, song: str) -> Dict:
+
+async def get_song_metadata_async(artist: str, song: str) -> Dict[str, Any]:
     """
-    Get comprehensive metadata from multiple free APIs in parallel.
-
-    Args:
-        artist: Artist name
-        song: Song title
-
-    Returns:
-        {
-            "success": bool,
-            "metadata": {...},
-            "sources": [list of APIs used]
-        }
+    Get comprehensive metadata from multiple free APIs in parallel using asyncio.gather.
+    Ultra-fast and 100% non-blocking.
     """
     try:
         metadata = {}
         sources_used = []
 
-        # Run all 4 metadata sources in parallel using a thread pool
-        # (requests.get is blocking I/O — ThreadPoolExecutor is the right tool here)
-        fetch_tasks = {
-            "musicbrainz": lambda: get_musicbrainz_metadata(artist, song),
-            "itunes":       lambda: get_itunes_metadata(artist, song),
-            "lastfm":       lambda: get_lastfm_metadata(artist, song),
-            "wikipedia":    lambda: get_wikipedia_summary(artist, song),
-        }
+        # Run all 4 metadata requests concurrently via asyncio.gather
+        mb_task = get_musicbrainz_metadata(artist, song)
+        itunes_task = get_itunes_metadata(artist, song)
+        lastfm_task = get_lastfm_metadata(artist, song)
+        wiki_task = get_wikipedia_summary(artist, song)
 
-        results = {}
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            futures = {executor.submit(fn): name for name, fn in fetch_tasks.items()}
-            for future in as_completed(futures, timeout=12):
-                name = futures[future]
-                try:
-                    results[name] = future.result()
-                except Exception as e:
-                    logger.warning(f"Parallel metadata fetch failed for {name}: {e}")
-                    results[name] = None
+        mb_data, itunes_data, lastfm_data, wiki_data = await asyncio.gather(
+            mb_task, itunes_task, lastfm_task, wiki_task, return_exceptions=True
+        )
 
-        mb_data    = results.get("musicbrainz")
-        itunes_data = results.get("itunes")
-        lastfm_data = results.get("lastfm")
-        wiki_data   = results.get("wikipedia")
+        mb_data = mb_data if isinstance(mb_data, dict) else None
+        itunes_data = itunes_data if isinstance(itunes_data, dict) else None
+        lastfm_data = lastfm_data if isinstance(lastfm_data, dict) else None
+        wiki_data = wiki_data if isinstance(wiki_data, dict) else None
 
-        # 1. MusicBrainz — core IDs, release info, tags
+        # 1. MusicBrainz
         if mb_data:
             sources_used.append("MusicBrainz")
             releases = mb_data.get("releases", [])
             release_title = release_date = release_id = ""
             if releases:
                 release = releases[0]
-                release_id    = release.get("id", "")
-                release_date  = release.get("date", "")
+                release_id = release.get("id", "")
+                release_date = release.get("date", "")
                 release_title = release.get("title", "")
 
             metadata.update({
-                "title":          mb_data.get("title", song),
+                "title": mb_data.get("title", song),
                 "musicbrainz_id": mb_data.get("id", ""),
-                "release_id":     release_id,
-                "release_date":   release_date,
-                "release_title":  release_title,
-                "duration_ms":    mb_data.get("length", 0),
-                "tags":           [tag.get("name") for tag in mb_data.get("tags", [])[:5]],
+                "release_id": release_id,
+                "release_date": release_date,
+                "release_title": release_title,
+                "duration_ms": mb_data.get("length", 0),
+                "tags": [tag.get("name") for tag in mb_data.get("tags", [])[:5] if tag.get("name")],
             })
             artist_credit = mb_data.get("artist-credit", [])
             metadata["artist"] = (
@@ -281,43 +253,44 @@ def get_song_metadata(artist: str, song: str) -> Dict:
             )
             metadata["album"] = release_title
 
-            cover_art = get_cover_art(release_id)
-            if cover_art:
-                metadata["album_art"] = cover_art
-                sources_used.append("Cover Art Archive")
+            if release_id:
+                cover_art = await get_cover_art(release_id)
+                if cover_art:
+                    metadata["album_art"] = cover_art
+                    sources_used.append("Cover Art Archive")
 
-        # 2. iTunes — album art, duration, genre, release date
+        # 2. iTunes
         if itunes_data:
             sources_used.append("iTunes")
-            metadata["title"]        = metadata.get("title") or itunes_data["title"]
-            metadata["artist"]       = itunes_data["artist"]
-            metadata["album"]        = metadata.get("album") or itunes_data["album"]
+            metadata["title"] = metadata.get("title") or itunes_data["title"]
+            metadata["artist"] = metadata.get("artist") or itunes_data["artist"]
+            metadata["album"] = metadata.get("album") or itunes_data["album"]
             metadata["release_date"] = metadata.get("release_date") or itunes_data["release_date"]
-            metadata["duration_ms"]  = metadata.get("duration_ms") or itunes_data["duration_ms"]
-            if not metadata.get("album_art"):
+            metadata["duration_ms"] = metadata.get("duration_ms") or itunes_data["duration_ms"]
+            if not metadata.get("album_art") and itunes_data.get("album_art"):
                 metadata["album_art"] = itunes_data["album_art"]
-            if not metadata.get("tags") and itunes_data["genre"]:
+            if not metadata.get("tags") and itunes_data.get("genre"):
                 metadata["tags"] = [itunes_data["genre"]]
-            metadata["itunes_url"] = itunes_data["url"]
+            metadata["itunes_url"] = itunes_data.get("url", "")
 
-        # 3. Last.fm — playcount, listeners, tags
+        # 3. Last.fm
         if lastfm_data:
             sources_used.append("Last.fm")
-            metadata["playcount"]  = lastfm_data.get("playcount", 0)
-            metadata["listeners"]  = lastfm_data.get("listeners", 0)
-            if not metadata.get("tags"):
-                metadata["tags"] = lastfm_data.get("tags", [])
-            if not metadata.get("album"):
-                metadata["album"] = lastfm_data.get("album", "")
-            metadata["lastfm_url"] = lastfm_data["url"]
+            metadata["playcount"] = lastfm_data.get("playcount", 0)
+            metadata["listeners"] = lastfm_data.get("listeners", 0)
+            if not metadata.get("tags") and lastfm_data.get("tags"):
+                metadata["tags"] = lastfm_data["tags"]
+            if not metadata.get("album") and lastfm_data.get("album"):
+                metadata["album"] = lastfm_data["album"]
+            metadata["lastfm_url"] = lastfm_data.get("url", "")
 
-        # 4. Wikipedia — description, thumbnail, link
+        # 4. Wikipedia
         if wiki_data:
             sources_used.append("Wikipedia")
             metadata.update({
-                "description":   wiki_data.get("description", ""),
+                "description": wiki_data.get("description", ""),
                 "wiki_thumbnail": wiki_data.get("thumbnail", ""),
-                "wiki_url":      wiki_data.get("url", ""),
+                "wiki_url": wiki_data.get("url", ""),
             })
 
         if not metadata:
@@ -334,30 +307,21 @@ def get_song_metadata(artist: str, song: str) -> Dict:
         return {"success": True, "metadata": metadata, "sources": sources_used}
 
     except Exception as e:
-        logger.error(f"Metadata retrieval error: {str(e)}")
+        logger.error(f"Metadata retrieval error: {e}")
         return {"success": False, "error": str(e), "sources": []}
 
+
 def format_metadata(metadata: Dict) -> Dict:
-    """
-    Format metadata for API response
-    
-    Args:
-        metadata: Raw metadata dict
-    
-    Returns:
-        Formatted metadata with human-readable fields
-    """
+    """Format metadata for API response."""
     try:
-        # Convert milliseconds to seconds and formatted time
         duration_ms = metadata.get("duration_ms", 0)
         duration_sec = duration_ms // 1000 if duration_ms else 0
         minutes = duration_sec // 60
         seconds = duration_sec % 60
-        
-        # Parse release date
+
         release_date = metadata.get("release_date", "")
         release_year = release_date.split("-")[0] if release_date else ""
-        
+
         return {
             "title": metadata.get("title", ""),
             "artist": metadata.get("artist", ""),
@@ -386,25 +350,15 @@ def format_metadata(metadata: Dict) -> Dict:
             "release_id": metadata.get("release_id", "")
         }
     except Exception as e:
-        logger.error(f"Metadata formatting error: {str(e)}")
+        logger.error(f"Metadata formatting error: {e}")
         return {}
 
-def enhance_lyrics_with_metadata(lyrics_response: Dict, artist: str, song: str) -> Dict:
-    """
-    Add metadata to lyrics response
-    
-    Args:
-        lyrics_response: Original lyrics API response
-        artist: Artist name
-        song: Song title
-    
-    Returns:
-        Enhanced response with metadata section
-    """
+
+async def enhance_lyrics_with_metadata(lyrics_response: Dict, artist: str, song: str) -> Dict:
+    """Add metadata to lyrics response (async)."""
     try:
-        metadata_result = get_song_metadata(artist, song)
-        
-        if metadata_result["success"]:
+        metadata_result = await get_song_metadata_async(artist, song)
+        if metadata_result.get("success"):
             formatted = format_metadata(metadata_result["metadata"])
             lyrics_response["metadata"] = formatted
         else:
@@ -412,55 +366,60 @@ def enhance_lyrics_with_metadata(lyrics_response: Dict, artist: str, song: str) 
                 "error": metadata_result.get("error", "Could not fetch metadata"),
                 "success": False
             }
-        
         return lyrics_response
     except Exception as e:
-        logger.error(f"Enhance lyrics error: {str(e)}")
+        logger.error(f"Enhance lyrics error: {e}")
         lyrics_response["metadata"] = {
             "error": str(e),
             "success": False
         }
         return lyrics_response
 
-def get_metadata_only(artist: str, song: str) -> Dict:
-    """
-    Get only metadata without lyrics
-    
-    Args:
-        artist: Artist name
-        song: Song title
-    
-    Returns:
-        {
-            "status": "success" | "error",
-            "metadata": {...},
-            "sources": [list of APIs used],
-            "timestamp": str
-        }
-    """
+
+async def get_metadata_only(artist: str, song: str) -> Dict:
+    """Get only metadata without lyrics (async)."""
     try:
-        metadata_result = get_song_metadata(artist, song)
-        
-        if metadata_result["success"]:
+        metadata_result = await get_song_metadata_async(artist, song)
+        now_ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+        if metadata_result.get("success"):
             formatted = format_metadata(metadata_result["metadata"])
             return {
                 "status": "success",
                 "metadata": formatted,
-                "sources": metadata_result["sources"],
-                "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                "sources": metadata_result.get("sources", []),
+                "timestamp": now_ts
             }
         else:
             return {
                 "status": "error",
                 "error": metadata_result.get("error", "Metadata fetch failed"),
                 "sources": [],
-                "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                "timestamp": now_ts
             }
     except Exception as e:
-        logger.error(f"Get metadata only error: {str(e)}")
+        logger.error(f"Get metadata only error: {e}")
         return {
             "status": "error",
             "error": str(e),
             "sources": [],
-            "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         }
+
+
+# Synchronous wrapper for backward compatibility
+def get_song_metadata(artist: str, song: str) -> Dict:
+    """Sync wrapper for get_song_metadata_async."""
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            import nest_asyncio
+            nest_asyncio.apply()
+            return loop.run_until_complete(get_song_metadata_async(artist, song))
+        return loop.run_until_complete(get_song_metadata_async(artist, song))
+    except Exception:
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(get_song_metadata_async(artist, song))
+        finally:
+            loop.close()

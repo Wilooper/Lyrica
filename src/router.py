@@ -16,7 +16,7 @@ from src.metadata_extractor import enhance_lyrics_with_metadata, get_metadata_on
 from src.sources.jiosaavan_fetcher import search_jiosaavn, get_jiosaavn_stream
 from src.trending_analytics import TrendingAnalyticsEngine, Country
 from src import __version__
-from src.config import ADMIN_KEY
+from src.config import ADMIN_KEY, GROQ_MODEL
 from src.groq_processor import process_lyrics
 from src.groq_key_manager import get_key_manager
 from src.translation_cache import (
@@ -513,9 +513,10 @@ def register_routes(app):
                         # Add translation_metadata to data
                         data["translation_metadata"] = {
                             "target_language": metadata.get("target_language", target_language),
-                            "processed_by": metadata.get("processed_by", "groq/llama-3.3-70b-versatile"),
+                            "processed_by": metadata.get("processed_by", f"groq/{GROQ_MODEL}"),
                             "cached_from": "fresh",
                         }
+
 
                         if has_timed:
                             # Synced lyrics: add romanized/translated to each timed_lyrics entry

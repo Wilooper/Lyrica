@@ -35,7 +35,8 @@ MUSIXMATCH_TOKEN=your_musixmatch_client_token
 # Note: Groq may deprecate or remove support for specific models at any time.
 # Override GROQ_MODEL with any available Groq model if the default is removed.
 GROQ_API_KEY=gsk_key1,gsk_key2
-GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_MODEL=openai/gpt-oss-120b
+
 
 # Proxy Pool (Protects against data center IP blocks on YouTube/Genius)
 PROXY_URL=http://user:pass@proxy1.com:8080,socks5://proxy2.com:1080

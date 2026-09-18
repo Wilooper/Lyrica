@@ -89,14 +89,16 @@ Once the server is running, test these URLs in your browser or terminal:
 | `APPLE_LYRICS_LANGUAGE` | Optional | `en` | Preferred lyrics language code. |
 | `APPLE_LYRICS_SCRIPT` | Optional | `latin` | Preferred lyrics script code. |
 | `GROQ_API_KEY` | Optional | — | Groq LLM key(s) for lyrics translation & romanization. Supports comma-separated keys for round-robin load balancing |
-| `GROQ_MODEL` | Optional | `llama-3.3-70b-versatile` | Override Groq LLM model (Groq may deprecate models — set to any available model if needed) |
+| `GROQ_MODEL` | Optional | `openai/gpt-oss-120b` | Override Groq LLM model (default: `openai/gpt-oss-120b`) |
+| `REDIS_URL` | Optional | — | Redis connection URL for L2 distributed cache and shared rate limiting (e.g. `redis://localhost:6379/0`) |
 | `PROXY_URL` | Optional | — | Global proxy URL or comma-separated proxy list for all fetchers |
 | `YT_PROXY_URL` | Optional | — | Dedicated proxy URL for YouTube Music fetcher |
 | `YT_COOKIES_PATH` | Optional | — | Absolute path to `cookies.txt` (used by YouTube fetcher layer 3) |
 | `YT_HEADERS_PATH` | Optional | — | Absolute path to `headers_auth.json` (used by YouTube fetcher layer 1) |
 | `LRCMUX_API_URL` | Optional | `https://api.lrcmux.dev` | Lrcmux base API URL |
 | `LRCLIB_API_URL` | Optional | `https://lrclib.net` | LRCLIB base API URL |
-| `RATE_LIMIT_STORAGE_URI` | Optional | `memory://` | Storage backend for rate limiter (e.g. `redis://localhost:6379/0`) |
+| `RATE_LIMIT_STORAGE_URI` | Optional | `memory://` | Storage backend for rate limiter (defaults to `REDIS_URL` if set, or `memory://`) |
+
 | `LOG_LEVEL` | Optional | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `CACHE_TTL` | Optional | `86400` | Caching TTL in seconds (default: 24 hours) |
 | `CACHE_DIR` | Optional | `cache_data` | Directory path for file-based JSON cache |

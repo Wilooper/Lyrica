@@ -63,11 +63,14 @@ def create_app():
     )
     limiter.init_app(app)
     
-    # NEW: Admin helper function
+    # Secure admin helper function
     def admin_required(req):
+        if not ADMIN_KEY:
+            return False
         # Can pass key via query param or header
         key = req.args.get("key") or req.headers.get("X-ADMIN-KEY")
-        return key == ADMIN_KEY
+        return bool(key and key == ADMIN_KEY)
+
     
     # Custom 429 error handler: tell the client to wait 35 seconds.
     @app.errorhandler(429)
@@ -99,3 +102,8 @@ def create_app():
     
     register_routes(app)
     return app
+
+
+# Top-level instance for Vercel / serverless platforms that import src/app.py directly
+app = create_app()
+

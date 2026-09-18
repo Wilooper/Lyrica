@@ -62,32 +62,37 @@ def _clean(raw: str) -> str:
     return cleaned.strip()
 
 
-def _parse_lyrics_page(html: str) -> str | None:
+import html as _html
+
+_CONTAINER_RE = re.compile(r'<div[^>]*data-lyrics-container="true"[^>]*>(.*?)</div>', re.DOTALL)
+_TAG_RE = re.compile(r'<[^>]+>')
+_BR_RE = re.compile(r'<br\s*/?>', re.IGNORECASE)
+
+
+def _parse_lyrics_page(html_text: str) -> str | None:
     """
-    Extract lyrics from a Genius song page using BeautifulSoup.
+    Extract lyrics from a Genius song page using high-speed regex & HTML decoding.
     Genius stores lyrics in <div data-lyrics-container="true"> elements.
     Multiple containers exist (one per section); join them with a blank line.
     """
-    try:
-        from bs4 import BeautifulSoup
-    except ImportError:
-        # BeautifulSoup not installed — cannot parse page
-        return None
-
-    soup = BeautifulSoup(html, "html.parser")
-    containers = soup.find_all("div", attrs={"data-lyrics-container": "true"})
-    if not containers:
+    matches = _CONTAINER_RE.findall(html_text)
+    if not matches:
         return None
 
     sections = []
-    for div in containers:
-        # Replace <br> with newlines before extracting text
-        for br in div.find_all("br"):
-            br.replace_with("\n")
-        sections.append(div.get_text(separator="\n"))
+    for div_content in matches:
+        # Replace <br> and <br/> with newline
+        text_with_newlines = _BR_RE.sub("\n", div_content)
+        # Strip all other HTML tags
+        clean_text = _TAG_RE.sub("", text_with_newlines)
+        # Unescape HTML entities (e.g. &amp;, &#x27;)
+        clean_text = _html.unescape(clean_text).strip()
+        if clean_text:
+            sections.append(clean_text)
 
     raw = "\n\n".join(sections)
     return _clean(raw) or None
+
 
 
 class GeniusFetcher(BaseFetcher):

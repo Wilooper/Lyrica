@@ -1,12 +1,18 @@
 import re
+import html as _html
 import httpx
-from bs4 import BeautifulSoup
 from src.logger import get_logger
 from .base_fetcher import BaseFetcher, get_http_client, build_result
 
 logger = get_logger("lyricsfreek_fetcher")
 
 _CLEANUP_RE = re.compile(r"\n*Submit Corrections.*", re.IGNORECASE | re.DOTALL)
+_LYRICS_CONTAINER_RE = re.compile(
+    r'<(?:div)[^>]*(?:class="[^"]*(?:lyrics|lyric-content)[^"]*"|id="lyrics")[^>]*>(.*?)</(?:div)>',
+    re.DOTALL | re.IGNORECASE
+)
+_TAG_RE = re.compile(r'<[^>]+>')
+_BR_RE = re.compile(r'<br\s*/?>', re.IGNORECASE)
 
 
 class LyricsFreekFetcher(BaseFetcher):
@@ -26,18 +32,16 @@ class LyricsFreekFetcher(BaseFetcher):
             if resp.status_code != 200:
                 return None
 
-            soup = BeautifulSoup(resp.text, "html.parser")
-
-            # Try multiple known selectors in priority order
-            lyrics_el = (
-                soup.find("div", {"class": "lyrics"})
-                or soup.find("div", {"id": "lyrics"})
-                or soup.select_one(".lyric-content")
-            )
-            if not lyrics_el:
+            match = _LYRICS_CONTAINER_RE.search(resp.text)
+            if not match:
                 return None
 
-            lyrics = _CLEANUP_RE.sub("", lyrics_el.get_text(separator="\n")).strip()
+            raw_content = match.group(1)
+            text_with_newlines = _BR_RE.sub("\n", raw_content)
+            clean_text = _TAG_RE.sub("", text_with_newlines)
+            lyrics = _html.unescape(clean_text).strip()
+            lyrics = _CLEANUP_RE.sub("", lyrics).strip()
+
             if not lyrics:
                 return None
 

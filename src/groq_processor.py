@@ -3,7 +3,7 @@ src/groq_processor.py
 
 Handles lyrics translation and romanization via Groq LLM.
 
-Uses the official `groq` Python SDK to call llama-3.3-70b-versatile.
+Uses the official `groq` Python SDK to call openai/gpt-oss-120b.
 Supports:
   - Translation to target language
   - Romanization (transliteration) to target language script

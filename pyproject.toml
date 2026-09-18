@@ -1,0 +1,9 @@
+[tool.vercel]
+entrypoint = "run:app"
+
+[project]
+name = "lyrica"
+version = "1.5.0"
+description = "High-performance multi-source song lyrics aggregation API"
+readme = "README.md"
+requires-python = ">=3.11"

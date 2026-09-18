@@ -5,10 +5,10 @@ import json
 from enum import Enum
 import asyncio
 import os
-import requests
-import logging
+import httpx
+from src.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("trending_analytics")
 
 class Country(Enum):
     """Supported countries for trending data (ISO 3166-1 alpha-2 codes)"""
@@ -105,8 +105,8 @@ class TrendingAnalyticsEngine:
         self.query_cache = defaultdict(int)  # {query: count}
         self.country_query_cache = defaultdict(lambda: defaultdict(int))  # {country: {query: count}}
         
-        # Apple Music API Base URL
-        self.apple_music_base_url = "https://rss.applemarketingtools.com/api/v2"
+        # Apple Music API Base URL (new domain)
+        self.apple_music_base_url = "https://rss.marketingtools.apple.com/api/v2"
         
         logger.info("Trending Analytics Engine initialized with Apple Music API")
     
@@ -139,10 +139,11 @@ class TrendingAnalyticsEngine:
             logger.debug(f"API URL: {api_url}")
             
             # Fetch data from Apple Music
-            response = requests.get(api_url, timeout=self.request_timeout)
-            response.raise_for_status()
-            
-            trending_data = response.json()
+            with httpx.Client(timeout=self.request_timeout, follow_redirects=True) as client:
+                response = client.get(api_url, headers={"User-Agent": "Lyrica/1.5.0"})
+                response.raise_for_status()
+                trending_data = response.json()
+
             
             if not trending_data:
                 logger.warning(f"No trending data returned for {country.value.upper()}")
@@ -162,15 +163,15 @@ class TrendingAnalyticsEngine:
             
             return trending_songs
         
-        except requests.exceptions.Timeout:
+        except httpx.TimeoutException:
             logger.error(f"Timeout fetching trending for {country.value.upper()}")
             if country.value in self.trending_cache:
                 logger.info(f"Returning expired cache for {country.value.upper()}")
                 return self.trending_cache[country.value][0]
             return []
         
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Request error fetching trending for {country.value.upper()}: {str(e)}")
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error fetching trending for {country.value.upper()}: {str(e)}")
             if country.value in self.trending_cache:
                 logger.info(f"Returning expired cache for {country.value.upper()}")
                 return self.trending_cache[country.value][0]
@@ -178,8 +179,6 @@ class TrendingAnalyticsEngine:
         
         except Exception as e:
             logger.error(f"Error fetching trending for {country.value.upper()}: {str(e)}")
-            import traceback
-            logger.error(traceback.format_exc())
             if country.value in self.trending_cache:
                 logger.info(f"Returning expired cache for {country.value.upper()}")
                 return self.trending_cache[country.value][0]

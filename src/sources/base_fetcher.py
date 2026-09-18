@@ -16,8 +16,8 @@ def get_http_client() -> httpx.AsyncClient:
     global _SHARED_CLIENT
     if _SHARED_CLIENT is None or _SHARED_CLIENT.is_closed:
         _SHARED_CLIENT = httpx.AsyncClient(
-            timeout=httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=2.0),
-            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+            timeout=httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=3.0),
+            limits=httpx.Limits(max_connections=200, max_keepalive_connections=50, keepalive_expiry=30.0),
             headers={
                 "User-Agent": (
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -29,6 +29,7 @@ def get_http_client() -> httpx.AsyncClient:
             follow_redirects=True,
         )
     return _SHARED_CLIENT
+
 
 
 def build_result(
