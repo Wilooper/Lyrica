@@ -56,60 +56,48 @@ LOG_LEVEL=INFO
 
 ## 🐳 Option 1: Docker & Docker Compose (Recommended)
 
-### Using Docker CLI
+Lyrica includes a production-ready **multi-stage Dockerfile** and preconfigured `docker-compose.yml` with Redis sidecar, resource constraints, health checks, and a read-only root filesystem.
 
-1. **Build the Docker Image**:
+### Quick Start with Docker Compose
+
+The easiest way to deploy Lyrica in production with Redis L2 caching:
+
+```bash
+# 1. Clone repository and set up environment
+git clone https://github.com/Wilooper/Lyrica.git
+cd Lyrica
+cp .env.example .env
+
+# 2. Start Lyrica API + Redis in background
+docker compose up -d
+
+# 3. Check container status & follow logs
+docker compose ps
+docker compose logs -f lyrica
+```
+
+The production compose environment provides:
+- **Lyrica API** (`lyrica-api`): Gunicorn gevent workers, handling 2,000+ concurrent connections per worker
+- **Redis sidecar** (`lyrica-redis`): L2 cache & shared rate limiter with LRU eviction and persistence
+- **Security Hardening**: `read_only` filesystem, `no-new-privileges`, dropped capabilities, unprivileged `lyrica` user
+- **Resource Limits**: CPU (2.0) and Memory (1GB) caps to prevent noisy-neighbor starvation
+
+### Using Docker CLI (Standalone)
+
+1. **Build the Production Image**:
    ```bash
-   docker build -t lyrica:1.4.0 .
+   docker build -t lyrica:1.5.0 .
    ```
 
 2. **Run Container**:
    ```bash
    docker run -d \
      --name lyrica_api \
-     -p 9999:9999 \
+     -p 7860:7860 \
      --env-file .env \
      -v $(pwd)/cache_data:/app/cache_data \
-     lyrica:1.4.0
+     lyrica:1.5.0
    ```
-
-### Using Docker Compose
-
-Create a `docker-compose.yml` file:
-
-```yaml
-version: '3.8'
-
-services:
-  lyrica:
-    build: .
-    container_name: lyrica_api
-    restart: always
-    ports:
-      - "9999:9999"
-    env_file:
-      - .env
-    volumes:
-      - ./cache_data:/app/cache_data
-      - ./security:/app/security
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9999/"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-
-  redis:
-    image: redis:7-alpine
-    container_name: lyrica_redis
-    restart: always
-    ports:
-      - "6379:6379"
-```
-
-Run compose:
-```bash
-docker-compose up -d
-```
 
 ---
 

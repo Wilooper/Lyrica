@@ -1,0 +1,119 @@
+# ============================================================
+# Lyrica — Production Docker Compose
+#
+# Usage:
+#   docker compose up -d              # Start everything
+#   docker compose logs -f lyrica     # Follow logs
+#   docker compose down               # Stop everything
+#   docker compose up -d --build      # Rebuild and restart
+#
+# This compose file sets up:
+#   1. Lyrica API server (production-hardened Gunicorn)
+#   2. Redis (L2 cache + rate limit backend)
+#   3. Persistent volumes for cache and Redis data
+# ============================================================
+
+services:
+  # ── Lyrica API ──────────────────────────────────────────────
+  lyrica:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lyrica-api
+    restart: unless-stopped
+    ports:
+      - "${PORT:-7860}:7860"
+    env_file:
+      - .env
+    environment:
+      # Override env vars for production container
+      LYRICA_ENV: production
+      PORT: "7860"
+      LOG_LEVEL: "${LOG_LEVEL:-WARNING}"
+      # Redis — connect to the sidecar Redis container
+      REDIS_URL: "redis://redis:6379/0"
+      RATE_LIMIT_STORAGE_URI: "redis://redis:6379/1"
+      # Aggressive caching (7 days — lyrics rarely change)
+      CACHE_TTL: "${CACHE_TTL:-604800}"
+      CACHE_DIR: /app/cache_data
+      # Concurrency tuning
+      WEB_CONCURRENCY: "${WEB_CONCURRENCY:-4}"
+      GUNICORN_WORKER_CLASS: "${GUNICORN_WORKER_CLASS:-gthread}"
+      GUNICORN_THREADS: "${GUNICORN_THREADS:-16}"
+      # Trust one reverse-proxy hop so rate limiting uses the real client IP.
+      TRUST_PROXY: "${TRUST_PROXY:-1}"
+    volumes:
+      # Persist disk cache across container restarts
+      - lyrica-cache:/app/cache_data
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:7860/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+        reservations:
+          memory: 256M
+          cpus: "0.5"
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=100M
+      - /dev/shm:size=64M
+    networks:
+      - lyrica-net
+
+  # ── Redis (L2 Cache + Rate Limiting) ────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: lyrica-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+      --save 900 1
+      --save 300 10
+      --tcp-backlog 511
+      --timeout 300
+      --tcp-keepalive 60
+      --loglevel warning
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 300M
+          cpus: "0.5"
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=10M
+    networks:
+      - lyrica-net
+
+volumes:
+  lyrica-cache:
+    driver: local
+  redis-data:
+    driver: local
+
+networks:
+  lyrica-net:
+    driver: bridge

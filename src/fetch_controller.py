@@ -18,8 +18,10 @@ from __future__ import annotations
 
 import asyncio
 
+from src.logger import get_logger
 from src.sources import ALL_FETCHERS
 
+logger = get_logger("fetch_controller")
 
 _SOURCE_ORDER = ["lrclib", "lrcmux", "genius", "youtube", "netease", "megalobiz", "musixmatch", "apple_music"]
 _SOURCE_BY_ID = {
@@ -68,7 +70,12 @@ async def _try_fetcher(source_name: str, artist: str, song: str, timestamps: boo
 		if source_name in ("lrcmux", "apple_music"):
 			return await fetcher.fetch(artist, song, timestamps=timestamps, word_level=word_level, syllabus=syllabus)
 		return await fetcher.fetch(artist, song, timestamps=timestamps)
-	except Exception:
+	except asyncio.CancelledError:
+		raise
+	except Exception as e:
+		# Never let one provider take down the fallback chain, but keep enough
+		# signal to diagnose a permanently broken fetcher in production.
+		logger.debug("Fetcher %s failed for %r - %r: %s", source_name, artist, song, e)
 		return None
 
 
@@ -253,6 +260,11 @@ async def fetch_lyrics_controller(
 	word_level: bool = False,
 	syllabus: bool = False,
 ) -> dict:
+	try:
+		fast_timeout = max(1, min(int(fast_timeout or 20), 60))
+	except (TypeError, ValueError):
+		fast_timeout = 20
+
 	source_names = _normalize_sequence(sequence)
 	if not pass_param and sequence is None:
 		source_names = [name for name in _SOURCE_ORDER if name in ALL_FETCHERS]

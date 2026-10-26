@@ -2,9 +2,9 @@ from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
 from collections import defaultdict, deque
 import json
+import threading
+import logging
 from enum import Enum
-import asyncio
-import os
 import httpx
 from src.logger import get_logger
 
@@ -99,11 +99,18 @@ class TrendingAnalyticsEngine:
         """
         self.cache_ttl = timedelta(hours=cache_ttl_hours)
         self.request_timeout = request_timeout
+        # Guards all mutable state below. RLock so read helpers can call each
+        # other without deadlocking. Flask's threaded worker pool calls these
+        # from many threads simultaneously.
+        self._lock = threading.RLock()
         self.trending_cache = {}  # {country: (data, timestamp)}
         # Bounded deque prevents unbounded memory growth on Render's 512MB free tier
         self.user_queries = deque(maxlen=10000)
         self.query_cache = defaultdict(int)  # {query: count}
         self.country_query_cache = defaultdict(lambda: defaultdict(int))  # {country: {query: count}}
+        # Counter maps are bounded independently of the deque: once exceeded,
+        # they are rebuilt from the (bounded) deque instead of growing forever.
+        self._max_unique_queries = 20000
         
         # Apple Music API Base URL (new domain)
         self.apple_music_base_url = "https://rss.marketingtools.apple.com/api/v2"
@@ -129,7 +136,8 @@ class TrendingAnalyticsEngine:
         # Check cache validity
         if self._is_cache_valid(country.value):
             logger.info(f"Using cached trending data for {country.value.upper()}")
-            return self.trending_cache[country.value][0]
+            with self._lock:
+                return self.trending_cache[country.value][0]
         
         try:
             logger.info(f"Fetching trending songs from Apple Music for {country.value.upper()}...")
@@ -158,30 +166,34 @@ class TrendingAnalyticsEngine:
             trending_songs = self._parse_trending_data(trending_data, country.value, limit)
             
             # Cache the results
-            self.trending_cache[country.value] = (trending_songs, datetime.now())
+            with self._lock:
+                self.trending_cache[country.value] = (trending_songs, datetime.now())
             logger.info(f"Successfully cached {len(trending_songs)} trending songs for {country.value.upper()}")
             
             return trending_songs
         
         except httpx.TimeoutException:
             logger.error(f"Timeout fetching trending for {country.value.upper()}")
-            if country.value in self.trending_cache:
-                logger.info(f"Returning expired cache for {country.value.upper()}")
-                return self.trending_cache[country.value][0]
+            with self._lock:
+                if country.value in self.trending_cache:
+                    logger.info(f"Returning expired cache for {country.value.upper()}")
+                    return self.trending_cache[country.value][0]
             return []
         
         except httpx.HTTPError as e:
             logger.error(f"HTTP error fetching trending for {country.value.upper()}: {str(e)}")
-            if country.value in self.trending_cache:
-                logger.info(f"Returning expired cache for {country.value.upper()}")
-                return self.trending_cache[country.value][0]
+            with self._lock:
+                if country.value in self.trending_cache:
+                    logger.info(f"Returning expired cache for {country.value.upper()}")
+                    return self.trending_cache[country.value][0]
             return []
         
         except Exception as e:
             logger.error(f"Error fetching trending for {country.value.upper()}: {str(e)}")
-            if country.value in self.trending_cache:
-                logger.info(f"Returning expired cache for {country.value.upper()}")
-                return self.trending_cache[country.value][0]
+            with self._lock:
+                if country.value in self.trending_cache:
+                    logger.info(f"Returning expired cache for {country.value.upper()}")
+                    return self.trending_cache[country.value][0]
             return []
     
     def get_trending_by_countries(self, countries: List[Country], 
@@ -217,17 +229,42 @@ class TrendingAnalyticsEngine:
         """
         try:
             user_query = UserQuery(user_id, query, country.upper())
-            self.user_queries.append(user_query)
-            
-            # Update global query cache
-            self.query_cache[user_query.query_normalized] += 1
-            
-            # Update country-specific query cache
-            self.country_query_cache[country.upper()][user_query.query_normalized] += 1
-            
+            with self._lock:
+                self.user_queries.append(user_query)
+
+                # Update global query cache
+                self.query_cache[user_query.query_normalized] += 1
+
+                # Update country-specific query cache
+                self.country_query_cache[country.upper()][user_query.query_normalized] += 1
+
+                self._trim_query_caches_locked()
+
             logger.debug(f"Recorded query: {query} from user {user_id} in {country.upper()}")
         except Exception as e:
             logger.error(f"Error recording user query: {str(e)}")
+
+    def _trim_query_caches_locked(self):
+        """Bound the counter maps, which otherwise grow with every unique query.
+
+        The deque is already capped at 10k recent queries. Periodically rebuild
+        the aggregates from it so a long-lived worker's RSS stays flat.
+        """
+        country_entries = sum(len(v) for v in self.country_query_cache.values())
+        if len(self.query_cache) <= self._max_unique_queries and country_entries <= self._max_unique_queries * 2:
+            return
+
+        self.query_cache.clear()
+        self.country_query_cache.clear()
+        for query_obj in self.user_queries:
+            normalized = query_obj.query_normalized
+            self.query_cache[normalized] += 1
+            self.country_query_cache[query_obj.country][normalized] += 1
+        logger.debug(
+            "Rebuilt analytics counters: %s global / %s country entries",
+            len(self.query_cache),
+            country_entries,
+        )
     
     def get_top_queries(self, limit: int = 20, country: Optional[str] = None,
                        days: Optional[int] = None) -> List[Tuple[str, int]]:
@@ -245,21 +282,22 @@ class TrendingAnalyticsEngine:
         if limit < 1 or limit > 100:
             limit = 20
         
-        if country:
-            queries_to_analyze = self.country_query_cache.get(country.upper(), {}).copy()
-        else:
-            queries_to_analyze = self.query_cache.copy()
-        
-        # Filter by time window if specified
-        if days:
-            cutoff_date = datetime.now() - timedelta(days=days)
-            queries_to_analyze = self._filter_queries_by_date(
-                queries_to_analyze, cutoff_date
-            )
-        
-        # Sort by frequency and return top N
-        top_queries = sorted(queries_to_analyze.items(), key=lambda x: x[1], 
-                            reverse=True)[:limit]
+        with self._lock:
+            if country:
+                queries_to_analyze = dict(self.country_query_cache.get(country.upper(), {}))
+            else:
+                queries_to_analyze = dict(self.query_cache)
+
+            # Filter by time window if specified
+            if days:
+                cutoff_date = datetime.now() - timedelta(days=days)
+                queries_to_analyze = self._filter_queries_by_date(
+                    queries_to_analyze, cutoff_date
+                )
+
+            # Sort by frequency and return top N
+            top_queries = sorted(queries_to_analyze.items(), key=lambda x: x[1],
+                                reverse=True)[:limit]
         
         logger.info(f"Retrieved {len(top_queries)} top queries (limit={limit}, country={country}, days={days})")
         return top_queries
@@ -278,12 +316,13 @@ class TrendingAnalyticsEngine:
             limit = 20
         
         results = {}
-        for country in self.country_query_cache:
-            results[country] = sorted(
-                self.country_query_cache[country].items(),
-                key=lambda x: x[1],
-                reverse=True
-            )[:limit]
+        with self._lock:
+            for country, counts in self.country_query_cache.items():
+                results[country] = sorted(
+                    counts.items(),
+                    key=lambda x: x[1],
+                    reverse=True
+                )[:limit]
         
         logger.info(f"Retrieved top queries by country (limit={limit}, countries={len(results)})")
         return results
@@ -378,33 +417,35 @@ class TrendingAnalyticsEngine:
     
     def get_cache_status(self) -> Dict:
         """Get status of current cache"""
-        cache_info = {
-            'total_cached_countries': len(self.trending_cache),
-            'cached_countries': [c.upper() for c in self.trending_cache.keys()],
-            'total_recorded_queries': len(self.user_queries),
-            'unique_global_queries': len(self.query_cache),
-            'countries_with_queries': len(self.country_query_cache),
-            'cache_ttl_hours': self.cache_ttl.total_seconds() / 3600,
-            'cache_details': {}
-        }
-        
-        for country, (data, timestamp) in self.trending_cache.items():
-            age = datetime.now() - timestamp
-            is_valid = age < self.cache_ttl
-            cache_info['cache_details'][country.upper()] = {
-                'cached_at': timestamp.isoformat(),
-                'age_minutes': int(age.total_seconds() / 60),
-                'is_valid': is_valid,
-                'songs_count': len(data)
+        with self._lock:
+            cache_info = {
+                'total_cached_countries': len(self.trending_cache),
+                'cached_countries': [c.upper() for c in self.trending_cache.keys()],
+                'total_recorded_queries': len(self.user_queries),
+                'unique_global_queries': len(self.query_cache),
+                'countries_with_queries': len(self.country_query_cache),
+                'cache_ttl_hours': self.cache_ttl.total_seconds() / 3600,
+                'cache_details': {}
             }
-        
-        return cache_info
+
+            for country, (data, timestamp) in self.trending_cache.items():
+                age = datetime.now() - timestamp
+                is_valid = age < self.cache_ttl
+                cache_info['cache_details'][country.upper()] = {
+                    'cached_at': timestamp.isoformat(),
+                    'age_minutes': int(age.total_seconds() / 60),
+                    'is_valid': is_valid,
+                    'songs_count': len(data)
+                }
+
+            return cache_info
     
     def clear_cache(self) -> Dict:
         """Clear all caches"""
         try:
-            countries_cleared = [c.upper() for c in self.trending_cache.keys()]
-            self.trending_cache.clear()
+            with self._lock:
+                countries_cleared = [c.upper() for c in self.trending_cache.keys()]
+                self.trending_cache.clear()
             logger.info(f"Cleared cache for countries: {countries_cleared}")
             return {
                 'status': 'success',
@@ -420,10 +461,11 @@ class TrendingAnalyticsEngine:
     
     def _is_cache_valid(self, country: str) -> bool:
         """Check if cache is still valid"""
-        if country not in self.trending_cache:
-            return False
-        _, timestamp = self.trending_cache[country]
-        return datetime.now() - timestamp < self.cache_ttl
+        with self._lock:
+            if country not in self.trending_cache:
+                return False
+            _, timestamp = self.trending_cache[country]
+            return datetime.now() - timestamp < self.cache_ttl
     
     def _parse_trending_data(self, raw_data: Dict, country: str, limit: int) -> List[TrendingSong]:
         """

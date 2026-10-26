@@ -51,7 +51,7 @@ groq==1.6.0                  # Official Groq SDK for openai/gpt-oss-120b
 
 # ── Redis caching backend (distributed L2 cache) ─────────────
 redis>=5.0.0                 # Redis client for L2 cache and rate limiting
-# hiredis>=2.3.2             # Optional C parser for redis — much faster
+hiredis>=2.3.2               # C-based Redis parser — 10x faster (auto-detected by redis-py)
 
 # ── Concurrency worker for gunicorn (optional) ───────────────
 gevent>=24.2.1               # Greenlet-based high concurrency worker

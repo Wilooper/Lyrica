@@ -1,0 +1,83 @@
+site_name: Lyrica
+site_description: High-performance lyrics aggregation API with word-level sync, AI translation, metadata, and multi-tier caching.
+site_author: Shaurya Singh & Lyrica Contributors
+site_url: https://wilooper.github.io/Lyrica/
+repo_name: Wilooper/Lyrica
+repo_url: https://github.com/Wilooper/Lyrica
+
+theme:
+  name: material
+  language: en
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: deep purple
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.instant
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - md_in_html
+  - tables
+  - def_list
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Overview: getting-started/index.md
+      - Quickstart: getting-started/quickstart.md
+      - Installation: getting-started/installation.md
+  - API Reference:
+      - Overview & Auth: api/overview.md
+      - Lyrics API: api/lyrics.md
+      - Metadata & Trending: api/metadata-trending.md
+      - Administration: api/administration.md
+  - Architecture:
+      - System Overview: architecture/overview.md
+      - Multi-Tier Caching: architecture/caching.md
+      - Fallback Hierarchy: architecture/fallback.md
+  - Providers:
+      - Providers Matrix: providers/overview.md
+      - Genius: providers/genius.md
+      - Apple Music: providers/apple-music.md
+      - Community Sources: providers/community.md
+  - Configuration:
+      - Environment Variables: configuration/environment.md
+      - User Config (.lyrica.config): configuration/user-config.md
+  - Deployment:
+      - Docker & Compose: deployment/docker.md
+      - Cloud Platforms: deployment/cloud.md
+  - Development:
+      - Testing & Benchmarking: development/testing.md
+      - Contributing: development/contributing.md
+  - Troubleshooting:
+      - FAQ & Diagnostics: troubleshooting/faq.md

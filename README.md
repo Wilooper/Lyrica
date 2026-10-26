@@ -1,153 +1,112 @@
-# Lyrica — Open Source Lyrics API
+# Lyrica
 
-> **A high-performance Python/Flask REST API for plain & timestamped lyrics, word-level sync, metadata, sentiment analysis, trending charts, and Groq-powered lyrics translation.**
+<p align="center">
+  <img src="static/banner.png" alt="Lyrica Banner" width="600" onerror="this.style.display='none'"/>
+</p>
 
-![Made in India](https://img.shields.io/badge/Made%20in-India-blue.svg)
-![Python](https://img.shields.io/badge/Python-3.11%2B-brightgreen.svg)
-![Flask](https://img.shields.io/badge/Flask-3.0-blue.svg)
-![License](https://img.shields.io/badge/License-MIT-yellow.svg)
-![Status](https://img.shields.io/badge/Status-Active-success.svg)
+<p align="center">
+  <strong>High-performance, multi-provider lyrics aggregation API for plain, synchronized (LRC), word-level, and syllable-level lyrics with real-time AI translation.</strong>
+</p>
 
----
-
-## 🆕 What's New
-
-### v1.5.0 (Aug 2026)
-- **Apple Music Integration**: Native Apple Music source (ID 8) with syllable-level sync (`&syllabus=true`), word-level sync, and line-level timestamps
-- **Syllable-Level Sync**: Per-syllable timing via Apple Music — the most granular sync level for karaoke applications
-- **Multi-Sync-Level Fallback**: Intelligent fallback hierarchy: syllable → word → line → plain, automatically degrading to the best available sync level
-- **Cache Key v5**: Cache keys now include `syllabus` and `word_level` parameters to prevent collisions across sync levels
-- **CI/CD Improvements**: Docker images now auto-published on every push to `main` as `edge` and `sha-*` tags
-- **Now on codeberg also**: https://codeberg.org/willooper/Lyrica.git
-
-### v1.4.0
-- **Word-Level Sync (Karaoke)**: Per-word timestamps via Lrcmux (`&word=true&timestamps=true`)
-- **AI Translation & Romanization**: Real-time lyrics translation and transliteration via Groq LLM
-- **Trending Analytics**: Real-time Apple Music top charts by country
-- **Song Suggestions**: MusicBrainz-powered autocomplete for search-as-you-type
-- **Rate Limiting**: Configurable RPM limits per source with Redis backend support
+<p align="center">
+  <a href="https://github.com/Wilooper/Lyrica/actions/workflows/publish.yml"><img src="https://img.shields.io/github/actions/workflow/status/Wilooper/Lyrica/publish.yml?branch=main&label=CI%2FCD&logo=github" alt="CI/CD Status"></a>
+  <a href="https://github.com/Wilooper/Lyrica/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-brightgreen.svg?logo=python" alt="Python Versions">
+  <img src="https://img.shields.io/badge/docker-ready-2496ED.svg?logo=docker&logoColor=white" alt="Docker Ready">
+  <a href="https://wilooper.github.io/Lyrica/"><img src="https://img.shields.io/badge/docs-MkDocs%20Material-526CFE.svg?logo=materialformkdocs&logoColor=white" alt="Documentation"></a>
+</p>
 
 ---
 
 ## 📌 Overview
 
-**Lyrica** aggregates song lyrics from **8 active sources** with intelligent sync-level fallback, fast parallel execution, word-level synchronization (Karaoke mode), syllable-level sync, sentiment analysis, song metadata, trending charts, and real-time LLM translation/romanization using Groq.
+**Lyrica** aggregates song lyrics across **8 active sources** with intelligent multi-sync degradation, sub-millisecond multi-tier caching (89k+ requests/sec), and real-time neural translation/romanization powered by Groq LLMs (`openai/gpt-oss-120b`).
 
-- 💡 **No API Key Required**: Fully functional out-of-the-box without registration.
-- ⚡ **Sub-Second Speed**: Parallel multi-source fetch mode (`fast=true`) with TTL disk caching.
-- 🎤 **Word & Syllable-Level Sync**: Per-word and per-syllable timestamps for karaoke applications via Lrcmux (`&word=true`) and Apple Music (`&syllabus=true`).
-- 🌐 **AI Translation**: Translate & romanize lyrics on-the-fly via Groq LLM (`&translate=true`).
-- 🚀 **Production Ready**: Gunicorn-compatible with multi-key Groq rotation and proxy pool support.
+Whether you are building a **karaoke player**, a **music streaming client**, an **accessibility read-along tool**, or a **music discovery platform**, Lyrica delivers consistent, structured JSON responses with zero mandatory configuration.
+
+### ✨ Key Features
+
+- 🎵 **Multi-Provider Aggregation**: Aggregates from LRCLIB, Genius, Apple Music, YouTube Music, Lrcmux, NetEase, Megalobiz, and Musixmatch.
+- ⏱️ **Multi-Granular Synchronization**:
+  - **Line-Level (LRC)**: Sentence-by-sentence millisecond timing (`&timestamps=true`).
+  - **Word-Level (Karaoke)**: Per-word start and end timing for real-time highlighting (`&word=true`).
+  - **Syllable-Level**: Sub-word vocal syllable timing via Apple Music AMP API (`&syllabus=true`).
+- 🤖 **AI Translation & Romanization**: Real-time lyrics translation and script transliteration via Groq LLMs.
+- ⚡ **89,000+ RPS Throughput**: Multi-tier cache architecture (L1 In-Memory LRU + L2 Redis + L3 Disk) ensures sub-millisecond latency on cache hits.
+- 📊 **Track Intelligence**: Integrated mood analysis, emotional polarity, and rich metadata (cover art, genre, release date).
+- 🛡️ **Production-Hardened**: Gunicorn `gevent` concurrency (2,000+ conns/worker), unprivileged Docker user, `tini` PID 1, and health checks.
 
 ---
 
-## 🚀 Installing / Getting Started
+## 🚀 Quick Start
 
-### Quick Start (Local Development)
+### 1. Run with Docker Compose (Recommended)
+
+The fastest way to run Lyrica with full L2 Redis distributed caching:
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/Wilooper/Lyrica.git
 cd Lyrica
+cp .env.example .env
+docker compose up -d
+```
 
-# 2. Create virtual environment
+The API is instantly live at **`http://localhost:7860/`**.
+
+### 2. Run Locally with Python
+
+```bash
+git clone https://github.com/Wilooper/Lyrica.git
+cd Lyrica
 python -m venv venv
 source venv/bin/activate  # On Windows: .\venv\Scripts\Activate.ps1
-
-# 3. Install dependencies
 pip install -r requirements.txt
-
-# 4. Copy environment configuration
-cp .env.example .env
-
-# 5. Run the server
 python run.py
 ```
 
-Access the server:
-- **API Base**: `http://127.0.0.1:9999/`
-- **Web Interface (GUI)**: `http://127.0.0.1:9999/app`
-- **OpenAPI Spec**: `http://127.0.0.1:9999/openapi.json`
-
-### Docker Quick Start
-
-```bash
-# Build & Run Container
-docker build -t lyrica .
-docker run -p 9999:9999 --env-file .env lyrica
-```
+The API is live at **`http://127.0.0.1:9999/`**.
 
 ---
 
-## ✨ Features
+## 💡 Verified API Examples
 
-- 🎧 **Multi-Source Aggregation**: 8 active providers with automated sync-level fallback.
-- ⏱️ **Synchronized Timestamps (LRC)**: Line-level lyrics timing with millisecond accuracy.
-- 🎤 **Word-Level Sync (Karaoke)**: Per-word timing entries via Lrcmux / Apple Music (`&word=true`).
-- 🎵 **Syllable-Level Sync**: Per-syllable timing via Apple Music (`&syllabus=true`).
-- 🤖 **AI Translation & Romanization**: Real-time translation and transliteration to target languages using Groq LLM (`openai/gpt-oss-120b`).
-- 📊 **Sentiment & Mood Analysis**: Polarity, subjectivity, emotion classification, and word frequency breakdown.
-- 🖼️ **Rich Track Metadata**: Cover art, duration, genre, release date, and album information.
-- 📈 **Trending Charts & Suggestions**: Real-time Apple Music top charts by country and MusicBrainz search autocomplete.
-- 🛡️ **Proxy Rotation & Failover**: Thread-safe proxy pool with automated credential masking and cooldowns.
-- 💾 **Multi-Tier Caching & Concurrency**: L1 in-memory LRU + L2 Redis + L3 disk-based JSON caching with independent translation caching and high-concurrency async connection pooling.
-
----
-
-## 🎵 Supported Sources
-
-| ID | Source Name | Lyrics Type | Authentication |
-|----|-------------|-------------|----------------|
-| 1 | **Genius** | Plain | `GENIUS_TOKEN` (optional) |
-| 2 | **LRCLIB** | Timestamped + Plain | None (Free, highly reliable) |
-| 3 | **YouTube Music** | Timestamped + Plain | None / Optional Cookies |
-| 4 | **NetEase** | Timestamped (LRC) | None |
-| 5 | **Megalobiz** | Timestamped (LRC) | None |
-| 6 | **Musixmatch** | Timestamped (LRC) | `MUSIXMATCH_TOKEN` (optional) |
-| 7 | **Lrcmux** | Timestamped + Word-Level | None (api.lrcmux.dev) |
-| 8 | **Apple Music** | Timestamped + Word-Level + Syllable-Level | `APPLE_MUSIC_DEVELOPER_TOKEN` |
-
-*Default Fallback Order:* `LRCLIB (2) → Lrcmux (7) → Genius (1) → YouTube (3) → NetEase (4) → Megalobiz (5) → Musixmatch (6) → Apple Music (8)`
-- A new support of apple music will be added soon but if you wants its standalone version then you can access it from below links:-
-- [python version](https://github.com/thinkely/LyricaAME-py.git)
-- [nextjs version](https://github.com/thinkely/LyricaAME-js.git)
-
----
-
-## ⚙️ Configuration
-
-Lyrica uses environment variables (`.env`) for secrets and system infrastructure, and `.lyrica.config` for user preferences.
-
-### Environment Variables (`.env`)
-
-```env
-ADMIN_KEY=your_secure_admin_key
-GENIUS_TOKEN=your_genius_token
-GROQ_API_KEY=gsk_key1,gsk_key2
-GROQ_MODEL=openai/gpt-oss-120b
-REDIS_URL=redis://localhost:6379/0
-PROXY_URL=http://user:pass@host:port
-APPLE_MUSIC_DEVELOPER_TOKEN=your_apple_music_developer_token
-YT_COOKIES_PATH=/app/security/cookies.txt
-RATE_LIMIT_STORAGE_URI=memory://
-CACHE_TTL=86400
-LOG_LEVEL=INFO
-```
-
-Detailed environment variable documentation is available in [guide/SETUP_GUIDE.md](guide/SETUP_GUIDE.md).
-
----
-
-## 📚 Quick API Usage Examples
-
-### 1. Basic Lyrics
+### 1. Fetch Plain Lyrics
 ```bash
 curl "http://127.0.0.1:9999/lyrics/?artist=Coldplay&song=Yellow"
 ```
 
-### 2. Line-Level Timestamps
+```json
+{
+  "status": "success",
+  "data": {
+    "source": "lrclib",
+    "artist": "Coldplay",
+    "title": "Yellow",
+    "hasTimestamps": false,
+    "lyrics": "Look at the stars\nLook how they shine for you..."
+  }
+}
+```
+
+### 2. Synchronized Line-Level Lyrics (LRC)
 ```bash
 curl "http://127.0.0.1:9999/lyrics/?artist=Coldplay&song=Yellow&timestamps=true"
+```
+
+```json
+{
+  "status": "success",
+  "data": {
+    "source": "lrclib",
+    "artist": "Coldplay",
+    "title": "Yellow",
+    "sync_level": "line",
+    "hasTimestamps": true,
+    "timed_lyrics": [
+      { "id": "lrc_0", "text": "Look at the stars", "start_time": 36189, "end_time": 37719 }
+    ]
+  }
+}
 ```
 
 ### 3. Word-Level Sync (Karaoke Mode)
@@ -155,135 +114,121 @@ curl "http://127.0.0.1:9999/lyrics/?artist=Coldplay&song=Yellow&timestamps=true"
 curl "http://127.0.0.1:9999/lyrics/?artist=Coldplay&song=Yellow&timestamps=true&word=true"
 ```
 
-### 3b. Syllable-Level Sync (Apple Music)
-```bash
-curl "http://127.0.0.1:9999/lyrics/?artist=Coldplay&song=Yellow&timestamps=true&syllabus=true"
+```json
+{
+  "status": "success",
+  "data": {
+    "source": "lrcmux",
+    "artist": "Coldplay",
+    "title": "Yellow",
+    "sync_level": "word",
+    "hasTimestamps": true,
+    "timed_lyrics": [
+      {
+        "id": "lrc_0",
+        "text": "Look at the stars",
+        "start_time": 36189,
+        "end_time": 37719,
+        "words": [
+          { "word": "Look", "start": 36189, "end": 36520 },
+          { "word": "at", "start": 36520, "end": 36800 },
+          { "word": "the", "start": 36800, "end": 37050 },
+          { "word": "stars", "start": 37050, "end": 37719 }
+        ]
+      }
+    ]
+  }
+}
 ```
 
-### 4. Translation & Romanization (Groq LLM)
+### 4. Real-Time Translation & Romanization (Groq LLM)
 ```bash
 curl "http://127.0.0.1:9999/lyrics/?artist=Karan%20Aujla&song=Boyfriend&timestamps=true&translate=true&romanize=true&language=en"
 ```
 
-### 5. Mood Analysis & Metadata (Fast Mode)
+### 5. Song Autocomplete & Suggestions
 ```bash
-curl "http://127.0.0.1:9999/lyrics/?artist=Arijit%20Singh&song=Tum%20Hi%20Ho&fast=true&mood=true&metadata=true"
-```
-
-### 6. Song Suggestions (Autocomplete)
-```bash
-curl "http://127.0.0.1:9999/suggestion?q=Tum%20Hi%20Ho&limit=5"
-```
-
-### 7. Trending Songs (India)
-```bash
-curl "http://127.0.0.1:9999/trending/?country=IN&limit=10"
+curl "http://127.0.0.1:9999/suggestion?q=Bohemian%20Rhapsody&limit=3"
 ```
 
 ---
 
-## 🚀 Deployment
+## 🏗️ Architecture Overview
 
-Lyrica is production-ready for deployment on VPS, Docker, Render, Hugging Face, Railway, Fly.io, Vercel, and cloud providers.
-
-```bash
-# Example Production Startup via Gunicorn
-gunicorn -w 4 -b 0.0.0.0:9999 --timeout 120 run:app
+```mermaid
+graph LR
+    Client([Client Application]) --> Router[Flask REST API]
+    Router --> Cache{L1/L2/L3 Cache}
+    Cache -- Hit (0.003ms) --> Client
+    Cache -- Miss --> Controller[Fetch Controller]
+    Controller --> P1[LRCLIB]
+    Controller --> P2[Lrcmux]
+    Controller --> P3[Genius]
+    Controller --> P4[Apple Music]
+    Controller --> P5[YouTube / Others]
+    Controller --> LLM[Groq AI Processor]
+    Controller --> SaveCache[Multi-Tier Cache Save]
+    SaveCache --> Client
 ```
 
-📖 **For complete deployment guides (Docker, Nginx + SSL, Cloud Hosts), see [guide/DEPLOYMENT_GUIDE.md](guide/DEPLOYMENT_GUIDE.md).**
+---
+
+## 🎵 Provider Registry
+
+| ID | Provider | Lyrics Type | Sync Capabilities | Authentication |
+|:---:|---|---|---|---|
+| **1** | **Genius** | Plain | Complete Verses (Depth-Tracking) | None needed (Public Web Search fallback) or `GENIUS_TOKEN` |
+| **2** | **LRCLIB** | Timestamped + Plain | Line-Level | Free, no token required |
+| **3** | **YouTube Music** | Timestamped + Plain | Line-Level | Free (3-layer fallback) |
+| **4** | **NetEase** | Timestamped | Line-Level | Free |
+| **5** | **Megalobiz** | Timestamped | Line-Level | Free |
+| **6** | **Musixmatch** | Timestamped | Line-Level | `MUSIXMATCH_TOKEN` (optional) |
+| **7** | **Lrcmux** | Timestamped + Word-Level | Line & Word | Free via `api.lrcmux.dev` |
+| **8** | **Apple Music** | Timestamped + Word + Syllable | Line, Word & Syllable | `APPLE_MUSIC_DEVELOPER_TOKEN` |
+
+*Default Fallback Sequence:* `LRCLIB (2) → Lrcmux (7) → Genius (1) → YouTube (3) → NetEase (4) → Megalobiz (5) → Musixmatch (6) → Apple Music (8)`
 
 ---
 
-## 📖 Detailed Guides & Documentation
+## 📚 Complete Documentation
 
-Explore dedicated guides in the [`guide/`](guide/) directory:
+Full, structured documentation is available in the [`docs/`](docs/) directory and online:
 
-- 🚀 [**Setup & Installation Guide**](guide/SETUP_GUIDE.md) — Local setup, environment variables, user config.
-- 📖 [**Complete API & User Reference**](guide/USER_GUIDE.md) — Full endpoint reference, query parameters, schemas.
-- 🎤 [**Word-Level Sync (Karaoke) Guide**](guide/WORD_SYNC_GUIDE.md) — Timestamps schema and integration examples.
-- 🌐 [**Lyrics Translation Guide**](guide/TRANSLATION_GUIDE.md) — Groq LLM setup, multi-key rotation, language options.
-- 🚢 [**Production Deployment Guide**](guide/DEPLOYMENT_GUIDE.md) — Deployment instructions for Docker, VPS, Render, HF, Railway, Fly.io, Vercel.
-
----
-
-## 🛠️ Troubleshooting
-
-- **No Lyrics Found**: Verify song title and artist spelling. Try `fast=true` to query sources in parallel.
-- **YouTube Cloud IP Blocking**: Set `PROXY_URL` or `YT_PROXY_URL` in `.env` to route requests through proxy servers.
-- **Groq API Rate Limits**: Supply multiple Groq keys in `GROQ_API_KEY` (comma-separated) for round-robin rotation.
-- **Port Busy**: Modify port in `run.py` or specify `-b 0.0.0.0:<PORT>` when starting Gunicorn.
+- 🚀 [**Getting Started & Installation**](docs/getting-started/quickstart.md) — Prerequisites, virtualenv, and configuration.
+- 📖 [**API Reference Guide**](docs/api/overview.md) — Comprehensive parameter and endpoint reference.
+- 🎤 [**Word & Syllable Sync Guide**](docs/api/lyrics.md#synchronization-levels) — Integration guide for karaoke and rhythm apps.
+- 🏛️ [**Architecture & Caching**](docs/architecture/caching.md) — In-memory LRU, Redis, and disk caching mechanics.
+- 🚢 [**Deployment Guide**](docs/deployment/docker.md) — Docker Compose, VPS (Nginx + SSL), Render, Hugging Face, and Vercel.
+- 🧪 [**Testing & Benchmarks**](docs/development/testing.md) — Automated test suite and concurrency benchmarks.
 
 ---
 
-## 🤝 Contributing
+## 🧪 Testing & Verification
 
-Contributions are warmly welcome!
+Lyrica includes an end-to-end automated test harness:
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m 'Add amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
+```bash
+# Run all unit, live integration, and performance benchmarks
+python Test/run_all_tests.py
+```
 
-Please ensure code adheres to PEP 8 standards and new features include documentation updates.
+Results:
+- **Genius Parser Unit Tests**: Verified depth-tracking parsing without missing verses.
+- **Live Integration Tests**: Live requests against real Genius servers (`The Weeknd`, `Queen`).
+- **Performance Benchmark**: **89,182 req/s** on L1 cache, **4,276 req/s** on concurrent Flask routes.
 
 ---
 
-## 👥 Contributors
+## 🤝 Contributing & Community
+
+Contributions are warmly welcomed! Please read our [Contributing Guide](docs/development/contributing.md) and [Code of Conduct](CODE_OF_CONDUCT.md) before submitting a Pull Request.
 
 <!-- readme: contributors -start -->
-<table>
-	<tbody>
-		<tr>
-            <td align="center">
-                <a href="https://github.com/Wilooper">
-                    <img src="https://avatars.githubusercontent.com/u/198341775?v=4" width="100;" alt="Wilooper"/>
-                    <br />
-                    <sub><b>Shaurya singh</b></sub>
-                </a>
-            </td>
-            <td align="center">
-                <a href="https://github.com/thinkely">
-                    <img src="https://avatars.githubusercontent.com/u/321372956?v=4" width="100;" alt="thinkely"/>
-                    <br />
-                    <sub><b>Shaurya singh</b></sub>
-                </a>
-            </td>
-            <td align="center">
-                <a href="https://github.com/rombat">
-                    <img src="https://avatars.githubusercontent.com/u/9024503?v=4" width="100;" alt="rombat"/>
-                    <br />
-                    <sub><b>Romain Batigne</b></sub>
-                </a>
-            </td>
-            <td align="center">
-                <a href="https://github.com/shelbeely">
-                    <img src="https://avatars.githubusercontent.com/u/2256469?v=4" width="100;" alt="shelbeely"/>
-                    <br />
-                    <sub><b>Shelbee Johnson</b></sub>
-                </a>
-            </td>
-		</tr>
-	<tbody>
-</table>
 <!-- readme: contributors -end -->
-
----
-
-## 🙏 Special Thanks
-
-- **sigma67** — [ytmusicapi](https://github.com/sigma67/ytmusicapi)
-- **LrcLib Team** — Synchronized lyrics provider
-- **Lrcmux Team** — Musixmatch lyrics aggregation via [api.lrcmux.dev](https://api.lrcmux.dev)
-- **Groq** — High-speed LLM inference
-- **JioSaavn** — Metadata & audio integration
-- **syncedlyrics** — NetEase, Megalobiz, Musixmatch fetcher integration
 
 ---
 
 ## 📝 License
 
 Licensed under the [MIT License](LICENSE) © 2026 Lyrica Contributors.
-
-Made with ❤️ in India 🇮🇳
+Made with ❤️ by [Shaurya Singh (Wilooper)](https://github.com/Wilooper) and the open-source community.

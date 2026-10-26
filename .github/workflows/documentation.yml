@@ -1,0 +1,46 @@
+name: Documentation Integrity & Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "README.md"
+      - "mkdocs.yml"
+      - "scripts/verify_docs.py"
+      - ".github/workflows/documentation.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "README.md"
+      - "mkdocs.yml"
+      - "scripts/verify_docs.py"
+      - ".github/workflows/documentation.yml"
+
+jobs:
+  validate-docs:
+    name: Verify Docs Links & Build Site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install MkDocs & Material Theme
+        run: |
+          pip install --upgrade pip
+          pip install mkdocs mkdocs-material
+
+      - name: Audit Documentation Links, Assets & Code Fences
+        run: |
+          python scripts/verify_docs.py
+
+      - name: Build MkDocs Site in Strict Mode
+        run: |
+          mkdocs build --strict

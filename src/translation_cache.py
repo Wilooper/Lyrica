@@ -18,10 +18,16 @@ import os
 import threading
 from collections import OrderedDict
 from time import time
-from typing import Optional, Dict, Any
+from typing import Optional, Any
 
 from src.config import CACHE_DIR, CACHE_TTL
-from src.cache import get_redis_client, _json_dumps, _json_loads
+from src.cache import (
+    get_redis_client,
+    _atomic_write,
+    _json_dumps,
+    _json_loads,
+    _scan_redis_keys,
+)
 from src.logger import get_logger
 
 logger = get_logger("translation_cache")
@@ -31,6 +37,8 @@ _TRANSLATION_CACHE_DIR = os.path.join(CACHE_DIR, "translations")
 os.makedirs(_TRANSLATION_CACHE_DIR, exist_ok=True)
 
 _CACHE_VERSION = "t_v2"
+_REDIS_KEY_PREFIX = "lyrica:trans:"
+_L1_TTL = min(CACHE_TTL, 3600)
 
 
 # ── L1: In-Memory Bounded LRU Cache ───────────────────────────────────────────
@@ -62,6 +70,12 @@ class _TranslationMemoryCache:
     def size(self) -> int:
         with self._lock:
             return len(self._cache)
+
+    def clear(self) -> int:
+        with self._lock:
+            count = len(self._cache)
+            self._cache.clear()
+            return count
 
 
 _TRANS_MEM_CACHE = _TranslationMemoryCache(capacity=1000)
@@ -114,41 +128,46 @@ def load_translation_cache(key: str) -> Optional[dict]:
     redis_cli = get_redis_client()
     if redis_cli is not None:
         try:
-            val = redis_cli.get(f"lyrica:trans:{key}")
+            val = redis_cli.get(f"{_REDIS_KEY_PREFIX}{key}")
             if val:
                 data = _json_loads(val)
                 result = data.get("result") if isinstance(data, dict) and "result" in data else data
-                _TRANS_MEM_CACHE.set(key, result, ttl=min(CACHE_TTL, 3600))
-                logger.info(f"Translation L2 Redis cache hit: {key[:12]}...")
+                _TRANS_MEM_CACHE.set(key, result, ttl=_L1_TTL)
+                logger.debug(f"Translation L2 Redis cache hit: {key[:12]}...")
                 return result
         except Exception as e:
             logger.debug(f"Translation Redis get failed for {key[:12]}: {e}")
 
     # 3. L3 Disk
     path = _get_cache_path(key)
-    if not os.path.exists(path):
-        return None
-
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = _json_loads(f.read())
+    except FileNotFoundError:
+        return None
+    except Exception:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        return None
 
+    try:
         if time() > data.get("expiry", 0):
             try:
                 os.remove(path)
-            except Exception:
+            except OSError:
                 pass
             return None
 
         result = data.get("result")
-        _TRANS_MEM_CACHE.set(key, result, ttl=min(CACHE_TTL, 3600))
-        logger.info(f"Translation L3 disk cache hit: {key[:12]}...")
+        _TRANS_MEM_CACHE.set(key, result, ttl=_L1_TTL)
+        logger.debug(f"Translation L3 disk cache hit: {key[:12]}...")
         return result
-
     except Exception:
         try:
             os.remove(path)
-        except Exception:
+        except OSError:
             pass
         return None
 
@@ -165,21 +184,51 @@ def save_translation_cache(key: str, result: dict):
     if redis_cli is not None:
         try:
             payload = _json_dumps({"result": result, "expiry": time() + CACHE_TTL})
-            redis_cli.setex(f"lyrica:trans:{key}", CACHE_TTL, payload)
+            redis_cli.setex(f"{_REDIS_KEY_PREFIX}{key}", CACHE_TTL, payload)
         except Exception as e:
             logger.debug(f"Translation Redis save failed for {key[:12]}: {e}")
 
     # 3. L3 Disk
     path = _get_cache_path(key)
     try:
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(_json_dumps({
-                "expiry": time() + CACHE_TTL,
-                "result": result,
-            }))
-        logger.info(f"Translation saved to disk: {key[:12]}...")
+        _atomic_write(path, _json_dumps({
+            "expiry": time() + CACHE_TTL,
+            "result": result,
+        }))
+        logger.debug(f"Translation saved to disk: {key[:12]}...")
     except Exception as e:
         logger.warning(f"Translation disk cache save failed: {e}")
+
+
+def clear_translation_cache() -> dict:
+    """Clear the translation L1 memory tier and L3 disk tier.
+
+    Redis keys are removed by ``src.cache.clear_cache`` using the shared
+    ``lyrica:*`` prefix, so this helper only handles process-local tiers.
+    """
+    memory_cleared = _TRANS_MEM_CACHE.clear()
+    removed, failed = [], []
+    try:
+        entries = os.listdir(_TRANSLATION_CACHE_DIR)
+    except OSError as e:
+        logger.warning(f"Translation cache directory listing failed: {e}")
+        entries = []
+
+    for fname in entries:
+        path = os.path.join(_TRANSLATION_CACHE_DIR, fname)
+        if not os.path.isfile(path):
+            continue
+        try:
+            os.remove(path)
+            removed.append(fname)
+        except OSError as e:
+            failed.append({"file": fname, "error": str(e)})
+
+    return {
+        "memory_items_cleared": memory_cleared,
+        "disk_files_removed": len(removed),
+        "failed": failed,
+    }
 
 
 def translation_cache_stats() -> dict:
@@ -193,7 +242,9 @@ def translation_cache_stats() -> dict:
     redis_cli = get_redis_client()
     if redis_cli is not None:
         try:
-            keys_count = len(redis_cli.keys("lyrica:trans:*"))
+            keys_count = sum(
+                1 for _ in _scan_redis_keys(redis_cli, f"{_REDIS_KEY_PREFIX}*")
+            )
             redis_info = {"connected": True, "trans_keys": keys_count}
         except Exception as e:
             redis_info = {"connected": False, "error": str(e)}

@@ -1,8 +1,12 @@
 from flask import jsonify, request, render_template
 from datetime import datetime, timezone
 import os
+import re
+import hmac
 import asyncio
-import logging
+import atexit
+import threading
+import weakref
 import httpx as _httpx
 
 from src.proxy_manager import get_proxy_manager
@@ -23,7 +27,6 @@ from src.translation_cache import (
     make_translation_cache_key,
     load_translation_cache,
     save_translation_cache,
-    translation_cache_stats,
 )
 
 logger = get_logger("router")
@@ -31,32 +34,141 @@ logger = get_logger("router")
 # Initialize Trending Analytics Engine (global instance)
 trending_engine = TrendingAnalyticsEngine(cache_ttl_hours=24)
 
-def run_async(coro, timeout=30):
-    """Run async coroutine safely in sync context with timeout"""
-    try:
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+_IS_PRODUCTION = os.getenv("LYRICA_ENV", "").lower() == "production"
+_MAX_TEXT_LEN = int(os.getenv("MAX_TEXT_LENGTH", "200"))
+_thread_state = threading.local()
+_LOOPS: "weakref.WeakSet[asyncio.AbstractEventLoop]" = weakref.WeakSet()
 
-        if loop.is_running():
-            import nest_asyncio
-            nest_asyncio.apply()
-            return loop.run_until_complete(asyncio.wait_for(coro, timeout=timeout))
-        return loop.run_until_complete(asyncio.wait_for(coro, timeout=timeout))
-    except asyncio.TimeoutError:
-        logger.error("Async operation timed out")
-        raise Exception("Request timed out - operation took too long")
-    except Exception:
-        # Fallback to new event loop on closed loop or other RuntimeError
+
+@atexit.register
+def _close_thread_loops() -> None:
+    """Close per-thread loops before interpreter teardown.
+
+    Python otherwise destroys the selector's file descriptors first and then
+    garbage-collects the loop, which emits a noisy "Invalid file descriptor: -1"
+    warning on shutdown.
+    """
+    for loop in list(_LOOPS):
+        if loop.is_closed() or loop.is_running():
+            continue
         try:
-            loop = asyncio.new_event_loop()
+            loop.close()
+        except Exception:  # pragma: no cover - best effort during shutdown
+            pass
+
+# Shared blocking client for the one legacy sync endpoint (/suggestion).
+# httpx.Client is thread-safe; reuse avoids a TCP/TLS handshake per request.
+_SUGGESTION_CLIENT = _httpx.Client(
+    timeout=_httpx.Timeout(connect=3.0, read=7.0, write=3.0, pool=2.0),
+    headers={"User-Agent": "Lyrica/1.5.0 (https://github.com/Wilooper/Lyrica)"},
+    follow_redirects=True,
+)
+
+
+def _error_details(exc: BaseException) -> dict:
+    """Only expose raw exception text outside production.
+
+    Upstream exception messages can contain internal hostnames, tokens, or
+    filesystem paths. Clients still get the stable error envelope.
+    """
+    if _IS_PRODUCTION:
+        return {}
+    return {"details": str(exc)}
+
+
+def _admin_key_ok(key: str | None) -> bool:
+    """Constant-time admin key comparison."""
+    if not ADMIN_KEY or not key:
+        return False
+    return hmac.compare_digest(str(key), str(ADMIN_KEY))
+
+
+def _sanitize_text(value: str, max_len: int = _MAX_TEXT_LEN) -> str:
+    """Strip control characters and bound user-controlled text fields."""
+    value = re.sub(r"[\x00-\x1f\x7f]", " ", (value or "")).strip()
+    return value[:max_len]
+
+
+def _int_arg(name: str, default: int, minimum: int, maximum: int) -> int:
+    """Parse a bounded integer query parameter without ever raising a 500."""
+    raw = request.args.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(maximum, value))
+
+
+def _get_thread_loop() -> asyncio.AbstractEventLoop:
+    """Return a reusable event loop for the current worker thread.
+
+    ``asyncio.get_event_loop()`` raises in worker threads and the previous
+    fallback created (and leaked) a brand-new loop on every request. Reusing a
+    loop per thread keeps the shared httpx connection pool usable and avoids
+    "Event loop is closed" errors under load.
+    """
+    loop = getattr(_thread_state, "loop", None)
+    if loop is None or loop.is_closed():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        _thread_state.loop = loop
+        _LOOPS.add(loop)
+    return loop
+
+
+def _run_coro_in_new_thread(coro, timeout: int):
+    """Run a coroutine in a short-lived thread when this thread already has a
+    running loop (e.g. an async view or a framework that manages its own)."""
+    outcome: dict = {}
+
+    def _runner():
+        loop = asyncio.new_event_loop()
+        try:
             asyncio.set_event_loop(loop)
-            return loop.run_until_complete(asyncio.wait_for(coro, timeout=timeout))
-        except Exception as e:
-            logger.error(f"Fallback run_async failed: {e}")
-            raise
+            outcome["value"] = loop.run_until_complete(
+                asyncio.wait_for(coro, timeout=timeout)
+            )
+        except BaseException as exc:  # propagated to the calling thread
+            outcome["error"] = exc
+        finally:
+            try:
+                loop.run_until_complete(loop.shutdown_asyncgens())
+            except Exception:
+                pass
+            loop.close()
+
+    thread = threading.Thread(target=_runner, name="lyrica-async", daemon=True)
+    thread.start()
+    thread.join(timeout + 5)
+    if thread.is_alive():
+        raise TimeoutError("Request timed out - operation took too long")
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome.get("value")
+
+
+def run_async(coro, timeout=30):
+    """Run an async coroutine safely from a synchronous Flask view.
+
+    Raises :class:`TimeoutError` (HTTP 504 at the route layer) rather than a
+    generic exception, so clients receive the correct status code.
+    """
+    try:
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        running = None
+
+    if running is not None:
+        return _run_coro_in_new_thread(coro, timeout)
+
+    loop = _get_thread_loop()
+    try:
+        return loop.run_until_complete(asyncio.wait_for(coro, timeout=timeout))
+    except (asyncio.TimeoutError, TimeoutError) as exc:
+        logger.error("Async operation timed out after %ss", timeout)
+        raise TimeoutError("Request timed out - operation took too long") from exc
 
 
 def register_routes(app):
@@ -283,9 +395,23 @@ def register_routes(app):
         except Exception:
             cfg = None
 
-        artist = request.args.get("artist", "").strip()
-        song = request.args.get("song", "").strip()
-        country = request.args.get("country", "US").strip().upper()
+        raw_artist = request.args.get("artist", "")
+        raw_song = request.args.get("song", "")
+        artist = _sanitize_text(raw_artist)
+        song = _sanitize_text(raw_song)
+        country = _sanitize_text(request.args.get("country", "US"), 8).upper() or "US"
+
+        if len(raw_artist.strip()) > _MAX_TEXT_LEN or len(raw_song.strip()) > _MAX_TEXT_LEN:
+            return (
+                jsonify({
+                    "status": "error",
+                    "error": {
+                        "message": f"artist and song must each be at most {_MAX_TEXT_LEN} characters",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                }),
+                400,
+            )
 
         # Apply config defaults when query param not explicitly supplied
         _ts_default = (cfg.default_timestamps if cfg else False)
@@ -295,6 +421,17 @@ def register_routes(app):
         )
         pass_param = request.args.get("pass", "false").lower() == "true"
         sequence   = request.args.get("sequence", cfg.default_sequence if cfg else None)
+        if isinstance(sequence, str) and len(sequence) > 500:
+            return (
+                jsonify({
+                    "status": "error",
+                    "error": {
+                        "message": "sequence parameter is too long",
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    },
+                }),
+                400,
+            )
         fast_mode  = request.args.get("fast",  str(cfg.default_fast     if cfg else False)).lower() == "true"
         analyze_mood      = request.args.get("mood",     str(cfg.default_mood     if cfg else False)).lower() == "true"
         include_metadata  = request.args.get("metadata", str(cfg.default_metadata if cfg else False)).lower() == "true"
@@ -302,7 +439,9 @@ def register_routes(app):
         do_romanize  = request.args.get("romanize",  str(cfg.default_romanize  if cfg else False)).lower() == "true"
         word_level   = request.args.get("word",      str(cfg.default_word      if cfg else False)).lower() == "true"
         syllabus     = request.args.get("syllabus",  "false").lower() == "true"
-        target_language = request.args.get("language", cfg.default_language if cfg else "en").strip().lower()
+        target_language = _sanitize_text(
+            request.args.get("language", cfg.default_language if cfg else "en"), 40
+        ).lower() or "en"
         _fast_timeout = cfg.fast_timeout if cfg else 20
 
         if not artist or not song:
@@ -375,7 +514,7 @@ def register_routes(app):
                 ),
                 timeout=60,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Timeout fetching lyrics for {artist} - {song}")
             return (
                 jsonify({
@@ -395,7 +534,7 @@ def register_routes(app):
                     "status": "error",
                     "error": {
                         "message": "Failed to fetch lyrics",
-                        "details": str(e),
+                        **_error_details(e),
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     },
                 }),
@@ -434,7 +573,7 @@ def register_routes(app):
                     logger.warning(f"Mood analysis failed: {str(e)}")
                     result["mood_analysis"] = {
                         "error": "Unable to perform mood analysis",
-                        "details": str(e),
+                        **_error_details(e),
                     }
             else:
                 logger.warning("Could not extract lyrics for mood analysis")
@@ -450,7 +589,9 @@ def register_routes(app):
                 logger.info(f"Metadata enhanced for {artist} - {song}")
             except Exception as e:
                 logger.warning(f"Metadata enhancement failed: {str(e)}")
-                result["metadata_error"] = f"Could not retrieve metadata: {str(e)}"
+                result["metadata_error"] = "Could not retrieve metadata"
+                if not _IS_PRODUCTION:
+                    result["metadata_error"] += f": {e}"
 
         # 5. Translate / Romanize if requested
         if (do_translate or do_romanize) and result.get("status") == "success":
@@ -545,7 +686,9 @@ def register_routes(app):
 
                     except Exception as e:
                         logger.error(f"Translation/romanization failed: {str(e)}")
-                        result["translation_error"] = f"Translation processing failed: {str(e)}"
+                        result["translation_error"] = "Translation processing failed"
+                        if not _IS_PRODUCTION:
+                            result["translation_error"] += f": {e}"
 
         # 6. Cache if successful
         if result.get("status") == "success":
@@ -566,8 +709,19 @@ def register_routes(app):
     @app.route("/metadata/", methods=["GET"])
     def metadata():
         """Get song metadata only (without lyrics)"""
-        artist = request.args.get("artist", "").strip()
-        song = request.args.get("song", "").strip()
+        raw_artist = request.args.get("artist", "")
+        raw_song = request.args.get("song", "")
+        artist = _sanitize_text(raw_artist)
+        song = _sanitize_text(raw_song)
+
+        if len(raw_artist.strip()) > _MAX_TEXT_LEN or len(raw_song.strip()) > _MAX_TEXT_LEN:
+            return jsonify({
+                "status": "error",
+                "error": {
+                    "message": f"artist and song must each be at most {_MAX_TEXT_LEN} characters",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                },
+            }), 400
 
         if not artist or not song:
             return (
@@ -587,7 +741,7 @@ def register_routes(app):
             result = get_metadata_only(artist, song)
             if asyncio.iscoroutine(result):
                 result = run_async(result, timeout=30)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Timeout fetching metadata for {artist} - {song}")
             return (
                 jsonify({
@@ -607,7 +761,7 @@ def register_routes(app):
                     "status": "error",
                     "error": {
                         "message": "Failed to fetch metadata",
-                        "details": str(e),
+                        **_error_details(e),
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     },
                 }),
@@ -619,12 +773,9 @@ def register_routes(app):
     @app.route("/trending/", methods=["GET"])
     def trending():
         """Get trending songs by country"""
-        country = request.args.get("country", "US").strip().upper()
-        countries_param = request.args.get("countries", "").strip()
-        limit = request.args.get("limit", 20, type=int)
-
-        if limit < 1 or limit > 100:
-            limit = 20
+        country = _sanitize_text(request.args.get("country", "US"), 8).upper() or "US"
+        countries_param = _sanitize_text(request.args.get("countries", ""), 64)
+        limit = _int_arg("limit", 20, 1, 100)
 
         logger.info(f"Trending request: country={country}, limit={limit}")
 
@@ -682,7 +833,7 @@ def register_routes(app):
                 "status": "error",
                 "error": {
                     "message": "Failed to fetch trending data",
-                    "details": str(e),
+                    **_error_details(e),
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             }), 500
@@ -690,12 +841,13 @@ def register_routes(app):
     @app.route("/analytics/top-queries/", methods=["GET"])
     def top_queries():
         """Get top user queries globally or by country"""
-        limit = request.args.get("limit", 20, type=int)
-        country = request.args.get("country", "").strip().upper()
-        days = request.args.get("days", None, type=int)
+        limit = _int_arg("limit", 20, 1, 100)
+        country = _sanitize_text(request.args.get("country", ""), 8).upper()
+        days_raw = request.args.get("days")
+        days = _int_arg("days", 0, 0, 3650) if days_raw else None
 
-        if limit < 1 or limit > 100:
-            limit = 20
+        if days is not None and days <= 0:
+            days = None
 
         logger.info(f"Top queries request: limit={limit}, country={country}, days={days}")
 
@@ -723,7 +875,7 @@ def register_routes(app):
                 "status": "error",
                 "error": {
                     "message": "Failed to fetch top queries",
-                    "details": str(e),
+                    **_error_details(e),
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             }), 500
@@ -731,10 +883,7 @@ def register_routes(app):
     @app.route("/analytics/trending-by-country/", methods=["GET"])
     def trending_by_country():
         """Get top queries for each country"""
-        limit = request.args.get("limit", 10, type=int)
-
-        if limit < 1 or limit > 100:
-            limit = 10
+        limit = _int_arg("limit", 10, 1, 100)
 
         logger.info(f"Trending by country request: limit={limit}")
 
@@ -759,7 +908,7 @@ def register_routes(app):
                 "status": "error",
                 "error": {
                     "message": "Failed to fetch trending by country",
-                    "details": str(e),
+                    **_error_details(e),
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             }), 500
@@ -767,11 +916,8 @@ def register_routes(app):
     @app.route("/analytics/trending-vs-queries/", methods=["GET"])
     def trending_vs_queries():
         """Compare trending songs with top user queries"""
-        country = request.args.get("country", "US").strip().upper()
-        limit = request.args.get("limit", 10, type=int)
-
-        if limit < 1 or limit > 100:
-            limit = 10
+        country = _sanitize_text(request.args.get("country", "US"), 8).upper() or "US"
+        limit = _int_arg("limit", 10, 1, 100)
 
         logger.info(f"Trending vs queries request: country={country}, limit={limit}")
 
@@ -799,7 +945,7 @@ def register_routes(app):
                 "status": "error",
                 "error": {
                     "message": "Failed to fetch trending vs queries",
-                    "details": str(e),
+                    **_error_details(e),
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             }), 500
@@ -807,11 +953,8 @@ def register_routes(app):
     @app.route("/analytics/trending-intersection/", methods=["GET"])
     def trending_intersection():
         """Find queries that match trending songs"""
-        country = request.args.get("country", "US").strip().upper()
-        limit = request.args.get("limit", 10, type=int)
-
-        if limit < 1 or limit > 100:
-            limit = 10
+        country = _sanitize_text(request.args.get("country", "US"), 8).upper() or "US"
+        limit = _int_arg("limit", 10, 1, 100)
 
         logger.info(f"Trending intersection request: country={country}, limit={limit}")
 
@@ -844,7 +987,7 @@ def register_routes(app):
                 "status": "error",
                 "error": {
                     "message": "Failed to fetch trending intersection",
-                    "details": str(e),
+                    **_error_details(e),
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             }), 500
@@ -852,7 +995,7 @@ def register_routes(app):
     @app.route("/api/jiosaavn/search", methods=["GET"])
     def jiosaavn_search():
         """Search for songs on JioSaavn"""
-        query = request.args.get("q", "").strip()
+        query = _sanitize_text(request.args.get("q", ""))
         
         if not query:
             return (
@@ -893,7 +1036,7 @@ def register_routes(app):
                     "status": "error",
                     "error": {
                         "message": "Failed to search JioSaavn",
-                        "details": str(e),
+                        **_error_details(e),
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     },
                 }),
@@ -903,7 +1046,7 @@ def register_routes(app):
     @app.route("/api/jiosaavn/play", methods=["GET"])
     def jiosaavn_play():
         """Get playable stream URL from JioSaavn"""
-        song_link = request.args.get("songLink", "").strip()
+        song_link = _sanitize_text(request.args.get("songLink", ""), 2048)
         
         if not song_link:
             return (
@@ -969,7 +1112,7 @@ def register_routes(app):
                     "status": "error",
                     "error": {
                         "message": "Failed to fetch stream",
-                        "details": str(e),
+                        **_error_details(e),
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     },
                 }),
@@ -979,8 +1122,8 @@ def register_routes(app):
     @app.route("/suggestion", methods=["GET"])
     def suggestion():
         """Search MusicBrainz for songs matching a query and return title + artist"""
-        query = request.args.get("q", "").strip()
-        limit = request.args.get("limit", 10, type=int)
+        query = _sanitize_text(request.args.get("q", ""))
+        limit = _int_arg("limit", 10, 1, 100)
 
         if not query:
             return (
@@ -994,20 +1137,15 @@ def register_routes(app):
                 400,
             )
 
-        if limit < 1 or limit > 100:
-            limit = 10
-
         logger.info(f"Suggestion request: q={query}, limit={limit}")
 
         try:
-            with _httpx.Client(timeout=10) as client:
-                resp = client.get(
-                    "https://musicbrainz.org/ws/2/recording/",
-                    params={"query": query, "fmt": "json", "limit": limit},
-                    headers={"User-Agent": "Lyrica/1.0 (https://github.com/Wilooper/Lyrica)"},
-                )
-                resp.raise_for_status()
-                data = resp.json()
+            resp = _SUGGESTION_CLIENT.get(
+                "https://musicbrainz.org/ws/2/recording/",
+                params={"query": query, "fmt": "json", "limit": limit},
+            )
+            resp.raise_for_status()
+            data = resp.json()
         except _httpx.TimeoutException:
             logger.error(f"Timeout querying MusicBrainz for: {query}")
             return (
@@ -1022,15 +1160,18 @@ def register_routes(app):
             )
         except Exception as e:
             logger.error(f"MusicBrainz suggestion error: {str(e)}")
+            # The client request was valid; the upstream service failed. A 5xx
+            # here is expected and must not look like an unhandled application
+            # crash (500), so surface it as 502 Bad Gateway.
             return (
                 jsonify({
                     "status": "error",
                     "error": {
-                        "message": "Failed to fetch suggestions from MusicBrainz",
+                        "message": "Suggestion service is temporarily unavailable",
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     },
                 }),
-                500,
+                502,
             )
 
         recordings = data.get("recordings", [])
@@ -1076,6 +1217,8 @@ def register_routes(app):
         """Get cache statistics and information"""
         try:
             stats = cache_stats()
+            # Public endpoint: do not disclose host filesystem paths.
+            stats.pop("cache_dir", None)
             return jsonify({"status": "success", **stats})
         except Exception as e:
             logger.error(f"Cache stats error: {str(e)}")
@@ -1084,7 +1227,7 @@ def register_routes(app):
                     "status": "error",
                     "error": {
                         "message": "Failed to retrieve cache stats",
-                        "details": str(e),
+                        **_error_details(e),
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     },
                 }),
@@ -1094,9 +1237,9 @@ def register_routes(app):
     @app.route("/cache/clear", methods=["POST"])
     def route_clear_cache():
         """Clear all cached data (Admin only)"""
-        # Require admin key via query param or header
-        key = request.args.get("key") or request.headers.get("X-ADMIN-KEY")
-        if not ADMIN_KEY or key != ADMIN_KEY:
+        # Require admin key via header (preferred) or query param (legacy)
+        key = request.headers.get("X-ADMIN-KEY") or request.args.get("key")
+        if not _admin_key_ok(key):
             return (
                 jsonify({"status": "error", "error": {"message": "Unauthorized"}}),
                 403,
@@ -1112,7 +1255,7 @@ def register_routes(app):
                     "status": "error",
                     "error": {
                         "message": "Failed to clear cache",
-                        "details": str(e),
+                        **_error_details(e),
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     },
                 }),
@@ -1125,27 +1268,13 @@ def register_routes(app):
         return "", 204
 
     # ─────────────────────────────────────────────────────────────────────────
-    # NEW: Health check
-    # ─────────────────────────────────────────────────────────────────────────
-
-    @app.route("/health", methods=["GET"])
-    def health():
-        """Lightweight health check — returns 200 OK with version info"""
-        return jsonify({
-            "status":    "ok",
-            "version":   app.config.get("VERSION", __version__),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # NEW: Proxy management endpoints (admin-key protected)
+    # Proxy management endpoints (admin-key protected)
     # ─────────────────────────────────────────────────────────────────────────
 
     def _admin_check():
         """Return (True, None) if admin key is valid, else (False, response)."""
-        from src.config import ADMIN_KEY
-        key = request.args.get("key") or request.headers.get("X-ADMIN-KEY")
-        if not ADMIN_KEY or key != ADMIN_KEY:
+        key = request.headers.get("X-ADMIN-KEY") or request.args.get("key")
+        if not _admin_key_ok(key):
             return False, (jsonify({"status": "error", "error": {"message": "Unauthorized — admin key required"}}), 403)
         return True, None
 
@@ -1157,7 +1286,7 @@ def register_routes(app):
             return err
 
         body = request.get_json(silent=True) or {}
-        proxy_url = (body.get("proxy") or request.args.get("proxy", "")).strip()
+        proxy_url = _sanitize_text(body.get("proxy") or request.args.get("proxy", ""), 2048)
 
         if not proxy_url:
             return jsonify({"status": "error", "error": {"message": "`proxy` field is required"}}), 400
@@ -1177,7 +1306,7 @@ def register_routes(app):
             return err
 
         body = request.get_json(silent=True) or {}
-        proxy_url = (body.get("proxy") or request.args.get("proxy", "")).strip()
+        proxy_url = _sanitize_text(body.get("proxy") or request.args.get("proxy", ""), 2048)
 
         if not proxy_url:
             return jsonify({"status": "error", "error": {"message": "`proxy` field is required"}}), 400
@@ -1252,35 +1381,6 @@ def register_routes(app):
         except Exception as e:
             logger.error(f"Config reload error: {e}")
             return jsonify({"status": "error", "error": {"message": str(e)}}), 500
-
-    @app.errorhandler(404)
-    def not_found(error):
-        """Handle 404 errors"""
-        return (
-            jsonify({
-                "status": "error",
-                "error": {
-                    "message": "Endpoint not found",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
-            }),
-            404,
-        )
-
-    @app.errorhandler(500)
-    def internal_error(error):
-        """Handle 500 errors"""
-        logger.error(f"Internal server error: {str(error)}")
-        return (
-            jsonify({
-                "status": "error",
-                "error": {
-                    "message": "Internal server error",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                },
-            }),
-            500,
-        )
 
 '''
  @app.route("/debug/trending-raw", methods=["GET"])

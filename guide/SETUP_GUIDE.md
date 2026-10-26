@@ -213,7 +213,7 @@ Lyrica queries sources in order until lyrics are found:
 
 ## 🛠️ Port & Host Customization
 
-If port `9999` is already in use, you can edit [run.py](file:///c:/Users/62atu/New%20folder/Lyrica/run.py):
+If port `9999` is already in use, you can edit [run.py](../run.py):
 
 ```python
 if __name__ == '__main__':
@@ -230,7 +230,8 @@ gunicorn -w 4 -b 0.0.0.0:8080 run:app
 
 ## 📖 Next Steps
 
-- Check out the full API specification in [USER_GUIDE.md](file:///c:/Users/62atu/New%20folder/Lyrica/guide/USER_GUIDE.md).
-- Learn about Karaoke per-word lyrics in [WORD_SYNC_GUIDE.md](file:///c:/Users/62atu/New%20folder/Lyrica/guide/WORD_SYNC_GUIDE.md).
-- Configure lyrics translation & romanization in [TRANSLATION_GUIDE.md](file:///c:/Users/62atu/New%20folder/Lyrica/guide/TRANSLATION_GUIDE.md).
-- Deploy to cloud or VPS using [DEPLOYMENT_GUIDE.md](file:///c:/Users/62atu/New%20folder/Lyrica/guide/DEPLOYMENT_GUIDE.md).
+- Check out the full API specification in [USER_GUIDE.md](USER_GUIDE.md).
+- Learn about Karaoke per-word lyrics in [WORD_SYNC_GUIDE.md](WORD_SYNC_GUIDE.md).
+- Configure lyrics translation & romanization in [TRANSLATION_GUIDE.md](TRANSLATION_GUIDE.md).
+- Deploy to cloud or VPS using [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md).
+- Or browse the modern documentation in [docs/](../docs/index.md).

@@ -7,3 +7,19 @@ version = "1.5.0"
 description = "High-performance multi-source song lyrics aggregation API"
 readme = "README.md"
 requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["Test"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning:flask.*",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+exclude = ["lyricsplus", "site", "cache_data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]

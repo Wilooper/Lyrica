@@ -1,11 +1,58 @@
+# ── Python ────────────────────────────
 __pycache__
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+
+# ── Environment / Secrets ─────────────
 .env
 .env.*
-venv/
-build/
-dist/
+!.env.example
+
+# ── Git ───────────────────────────────
 .git
 .gitignore
+.github
+
+# ── Virtual Environments ─────────────
+venv/
+.venv/
+env/
+
+# ── IDE / Editor ──────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Docker ────────────────────────────
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# ── Documentation (not needed at runtime)
+guide/
+Test/
+scripts/
+*.md
+!README.md
+LICENSE
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+SECURITY.md
+
+# ── CI / Config ───────────────────────
+.agents/
+openapi.json
+
+# ── Cache (rebuilt at runtime) ────────
+cache_data/
+
+# ── Cookies / Auth (NEVER include) ────
+cookies.txt
+headers_auth.json

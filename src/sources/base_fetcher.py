@@ -2,33 +2,45 @@ import httpx
 import asyncio
 import logging
 import re
+import threading
+import weakref
 from datetime import datetime, timezone
 
 logger = logging.getLogger("base_fetcher")
 
 # --------------------------------------------------------------------------- #
-# Shared async HTTP client — one instance reused across all fetchers.
-# Keeps TCP connections alive (connection pooling) and sets a browser-like UA.
+# Shared async HTTP client — one client per event loop.
+#
+# A single process-wide AsyncClient cannot safely be shared across event loops:
+# httpx/anyio primitives are bound to the loop that first uses them, and the
+# Flask sync→async bridge reuses one loop per worker thread. Keying the pool by
+# loop keeps connection reuse without "Event loop is closed" / "Future attached
+# to a different loop" failures under concurrency.
 # --------------------------------------------------------------------------- #
-_SHARED_CLIENT: httpx.AsyncClient | None = None
+_CLIENTS: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, httpx.AsyncClient]" = weakref.WeakKeyDictionary()
+_CLIENT_LOCK = threading.Lock()
+
 
 def get_http_client() -> httpx.AsyncClient:
-    global _SHARED_CLIENT
-    if _SHARED_CLIENT is None or _SHARED_CLIENT.is_closed:
-        _SHARED_CLIENT = httpx.AsyncClient(
-            timeout=httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=3.0),
-            limits=httpx.Limits(max_connections=200, max_keepalive_connections=50, keepalive_expiry=30.0),
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                ),
-                "Accept-Language": "en-US,en;q=0.9",
-            },
-            follow_redirects=True,
-        )
-    return _SHARED_CLIENT
+    loop = asyncio.get_running_loop()
+    with _CLIENT_LOCK:
+        client = _CLIENTS.get(loop)
+        if client is None or client.is_closed:
+            client = httpx.AsyncClient(
+                timeout=httpx.Timeout(connect=5.0, read=10.0, write=5.0, pool=3.0),
+                limits=httpx.Limits(max_connections=200, max_keepalive_connections=50, keepalive_expiry=30.0),
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        "Chrome/124.0.0.0 Safari/537.36"
+                    ),
+                    "Accept-Language": "en-US,en;q=0.9",
+                },
+                follow_redirects=True,
+            )
+            _CLIENTS[loop] = client
+        return client
 
 
 

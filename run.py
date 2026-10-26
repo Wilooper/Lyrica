@@ -1,7 +1,8 @@
-from src.app import create_app
+from src.app import app
 import os
 
-app = create_app()
+# Importing the already-created app avoids running create_app() twice (src.app
+# builds one instance for serverless platforms; run.py used to build another).
 
 if __name__ == "__main__":
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"

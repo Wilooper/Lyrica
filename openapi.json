@@ -6,55 +6,6 @@
     "description": "Auto-generated OpenAPI documentation using AST static analysis."
   },
   "paths": {
-    "/admin/cache/clear": {
-      "get": {
-        "summary": "Admin Clear Cache",
-        "description": "Endpoint for admin_clear_cache",
-        "operationId": "admin_clear_cache_get",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string"
-                    },
-                    "details": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/admin/cache/stats": {
-      "get": {
-        "summary": "Admin Cache Stats",
-        "description": "Endpoint for admin_cache_stats",
-        "operationId": "admin_cache_stats_get",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {}
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/": {
       "get": {
         "summary": "Home",
@@ -69,25 +20,25 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "endpoints": {
+                    "description": {
                       "type": "string"
                     },
                     "timestamp": {
                       "type": "string"
                     },
-                    "description": {
-                      "type": "string"
-                    },
-                    "parameters": {
-                      "type": "string"
-                    },
-                    "version": {
+                    "endpoints": {
                       "type": "string"
                     },
                     "fetchers": {
                       "type": "string"
                     },
+                    "parameters": {
+                      "type": "string"
+                    },
                     "status": {
+                      "type": "string"
+                    },
+                    "version": {
                       "type": "string"
                     },
                     "api": {
@@ -108,103 +59,7 @@
         "operationId": "lyrics_get",
         "parameters": [
           {
-            "name": "translate",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "mood",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "pass",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "syllabus",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "romanize",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "word",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "timestamp",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "artist",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "metadata",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "fast",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "sequence",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "timestamps",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "song",
             "in": "query",
             "required": false,
             "schema": {
@@ -220,7 +75,103 @@
             }
           },
           {
+            "name": "sequence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "romanize",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "timestamps",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "pass",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "country",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mood",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "metadata",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "syllabus",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "word",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "translate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "artist",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "song",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fast",
             "in": "query",
             "required": false,
             "schema": {
@@ -257,7 +208,7 @@
         "operationId": "metadata_get",
         "parameters": [
           {
-            "name": "song",
+            "name": "artist",
             "in": "query",
             "required": false,
             "schema": {
@@ -265,7 +216,7 @@
             }
           },
           {
-            "name": "artist",
+            "name": "song",
             "in": "query",
             "required": false,
             "schema": {
@@ -303,14 +254,6 @@
         "parameters": [
           {
             "name": "countries",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
             "in": "query",
             "required": false,
             "schema": {
@@ -358,14 +301,6 @@
         "operationId": "top_queries_get",
         "parameters": [
           {
-            "name": "country",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "days",
             "in": "query",
             "required": false,
@@ -374,7 +309,7 @@
             }
           },
           {
-            "name": "limit",
+            "name": "country",
             "in": "query",
             "required": false,
             "schema": {
@@ -412,16 +347,7 @@
         "summary": "Trending By Country",
         "description": "Get top queries for each country",
         "operationId": "trending_by_country_get",
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "parameters": [],
         "responses": {
           "200": {
             "description": "Successful response",
@@ -453,14 +379,6 @@
         "description": "Compare trending songs with top user queries",
         "operationId": "trending_vs_queries_get",
         "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "country",
             "in": "query",
@@ -501,14 +419,6 @@
         "description": "Find queries that match trending songs",
         "operationId": "trending_intersection_get",
         "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "country",
             "in": "query",
@@ -566,10 +476,10 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "status": {
+                    "results": {
                       "type": "string"
                     },
-                    "results": {
+                    "status": {
                       "type": "string"
                     },
                     "error": {
@@ -636,14 +546,6 @@
             "schema": {
               "type": "string"
             }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "responses": {
@@ -657,19 +559,19 @@
                     "results": {
                       "type": "string"
                     },
-                    "error": {
+                    "limit": {
                       "type": "string"
                     },
-                    "query": {
+                    "total": {
                       "type": "string"
                     },
                     "status": {
                       "type": "string"
                     },
-                    "limit": {
+                    "query": {
                       "type": "string"
                     },
-                    "total": {
+                    "error": {
                       "type": "string"
                     }
                   }
@@ -797,37 +699,6 @@
         }
       }
     },
-    "/health": {
-      "get": {
-        "summary": "Health",
-        "description": "Lightweight health check \u2014 returns 200 OK with version info",
-        "operationId": "health_get",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "Successful response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string"
-                    },
-                    "version": {
-                      "type": "string"
-                    },
-                    "timestamp": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v2/proxy/set": {
       "post": {
         "summary": "Proxy Set",
@@ -854,13 +725,13 @@
                     "status": {
                       "type": "string"
                     },
-                    "pool_size": {
-                      "type": "string"
-                    },
                     "message": {
                       "type": "string"
                     },
                     "error": {
+                      "type": "string"
+                    },
+                    "pool_size": {
                       "type": "string"
                     }
                   }
@@ -897,13 +768,13 @@
                     "status": {
                       "type": "string"
                     },
-                    "pool_size": {
-                      "type": "string"
-                    },
                     "message": {
                       "type": "string"
                     },
                     "error": {
+                      "type": "string"
+                    },
+                    "pool_size": {
                       "type": "string"
                     }
                   }
@@ -938,13 +809,13 @@
                     "status": {
                       "type": "string"
                     },
-                    "pool_size": {
-                      "type": "string"
-                    },
                     "message": {
                       "type": "string"
                     },
                     "error": {
+                      "type": "string"
+                    },
+                    "pool_size": {
                       "type": "string"
                     }
                   }
@@ -972,10 +843,10 @@
                     "status": {
                       "type": "string"
                     },
-                    "pool_size": {
+                    "proxies": {
                       "type": "string"
                     },
-                    "proxies": {
+                    "pool_size": {
                       "type": "string"
                     }
                   }
@@ -1003,10 +874,10 @@
                     "status": {
                       "type": "string"
                     },
-                    "pool_size": {
+                    "message": {
                       "type": "string"
                     },
-                    "message": {
+                    "pool_size": {
                       "type": "string"
                     }
                   }
@@ -1037,10 +908,10 @@
                     "status": {
                       "type": "string"
                     },
-                    "error": {
+                    "timestamp": {
                       "type": "string"
                     },
-                    "timestamp": {
+                    "error": {
                       "type": "string"
                     }
                   }
@@ -1068,19 +939,129 @@
                     "timestamp": {
                       "type": "string"
                     },
-                    "error": {
+                    "config": {
                       "type": "string"
                     },
                     "status": {
                       "type": "string"
                     },
-                    "message": {
+                    "error": {
                       "type": "string"
                     },
-                    "config": {
+                    "message": {
                       "type": "string"
                     }
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/cache/clear": {
+      "post": {
+        "summary": "Admin Clear Cache",
+        "description": "Endpoint for admin_clear_cache",
+        "operationId": "admin_clear_cache_post",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/cache/stats": {
+      "get": {
+        "summary": "Admin Cache Stats",
+        "description": "Endpoint for admin_cache_stats",
+        "operationId": "admin_cache_stats_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Liveness probe \u2014 deliberately does no network I/O.\n\nA health check that pings Redis on every probe can block a worker and\ncause the orchestrator to kill a perfectly healthy container. Use\n/health/ready for dependency checks.",
+        "operationId": "health_check_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "timestamp": {
+                      "type": "string"
+                    },
+                    "mode": {
+                      "type": "string"
+                    },
+                    "uptime_seconds": {
+                      "type": "string"
+                    },
+                    "service": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "summary": "Readiness Check",
+        "description": "Readiness probe \u2014 verifies optional Redis connectivity.",
+        "operationId": "readiness_check_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
                 }
               }
             }

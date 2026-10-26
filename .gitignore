@@ -36,6 +36,7 @@ cache_data/
 # ── Debug / generated reports ─────────────────────────────────────────────────
 lyrica_debug_report.html
 *.html.bak
+site/
 
 # ── IDEs ─────────────────────────────────────────────────────────────────────
 .vscode/

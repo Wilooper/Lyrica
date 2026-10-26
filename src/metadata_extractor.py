@@ -1,14 +1,54 @@
 import asyncio
+import os
 import re
+import threading
+import time
 import urllib.parse
+from collections import OrderedDict
 from typing import Optional, Dict, Any
-from functools import lru_cache
 from datetime import datetime, timezone
 import httpx
 from src.logger import get_logger
 from src.sources.base_fetcher import get_http_client
 
 logger = get_logger("metadata_extractor")
+
+# Metadata changes rarely and each uncached lookup makes 4-5 external calls.
+# A small bounded TTL cache protects those upstream APIs and cuts /metadata/
+# latency from seconds to microseconds for repeat tracks.
+_METADATA_CACHE_TTL = int(os.getenv("METADATA_CACHE_TTL", "3600"))
+_METADATA_CACHE_MAX = int(os.getenv("METADATA_CACHE_MAX", "2000"))
+_metadata_cache: "OrderedDict[str, tuple[float, dict]]" = OrderedDict()
+_metadata_cache_lock = threading.Lock()
+
+
+def _metadata_cache_get(key: str) -> Optional[dict]:
+    with _metadata_cache_lock:
+        entry = _metadata_cache.get(key)
+        if entry is None:
+            return None
+        expiry, value = entry
+        if time.time() > expiry:
+            _metadata_cache.pop(key, None)
+            return None
+        _metadata_cache.move_to_end(key)
+        return value
+
+
+def _metadata_cache_set(key: str, value: dict) -> None:
+    with _metadata_cache_lock:
+        _metadata_cache[key] = (time.time() + _METADATA_CACHE_TTL, value)
+        _metadata_cache.move_to_end(key)
+        while len(_metadata_cache) > _METADATA_CACHE_MAX:
+            _metadata_cache.popitem(last=False)
+
+
+def clear_metadata_cache() -> int:
+    """Drop all cached metadata; returns the number of evicted entries."""
+    with _metadata_cache_lock:
+        count = len(_metadata_cache)
+        _metadata_cache.clear()
+        return count
 
 # Free APIs (no auth required)
 COVER_ART_API = "https://coverartarchive.org"
@@ -207,6 +247,11 @@ async def get_song_metadata_async(artist: str, song: str) -> Dict[str, Any]:
     Get comprehensive metadata from multiple free APIs in parallel using asyncio.gather.
     Ultra-fast and 100% non-blocking.
     """
+    cache_key = f"{' '.join((artist or '').lower().split())}|{' '.join((song or '').lower().split())}"
+    cached = _metadata_cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     try:
         metadata = {}
         sources_used = []
@@ -294,17 +339,21 @@ async def get_song_metadata_async(artist: str, song: str) -> Dict[str, Any]:
             })
 
         if not metadata:
-            return {
+            result = {
                 "success": False,
                 "error": f"No metadata found for '{song}' by '{artist}'",
                 "sources": []
             }
+            _metadata_cache_set(cache_key, result)
+            return result
 
         # Popularity score 0-100
         listeners = metadata.get("listeners", 0)
         metadata["popularity"] = min(100, max(0, int((listeners / 10000) ** 0.5 * 10))) if listeners else 0
 
-        return {"success": True, "metadata": metadata, "sources": sources_used}
+        result = {"success": True, "metadata": metadata, "sources": sources_used}
+        _metadata_cache_set(cache_key, result)
+        return result
 
     except Exception as e:
         logger.error(f"Metadata retrieval error: {e}")
@@ -409,17 +458,29 @@ async def get_metadata_only(artist: str, song: str) -> Dict:
 
 # Synchronous wrapper for backward compatibility
 def get_song_metadata(artist: str, song: str) -> Dict:
-    """Sync wrapper for get_song_metadata_async."""
+    """Sync wrapper for get_song_metadata_async.
+
+    Prefer ``await get_song_metadata_async`` in async code. This helper uses a
+    fresh loop and cleanly handles being called from a thread that already has
+    a running loop.
+    """
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import nest_asyncio
-            nest_asyncio.apply()
-            return loop.run_until_complete(get_song_metadata_async(artist, song))
-        return loop.run_until_complete(get_song_metadata_async(artist, song))
-    except Exception:
-        loop = asyncio.new_event_loop()
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(get_song_metadata_async(artist, song))
+
+    # Already inside an event loop: run the coroutine in its own thread/loop.
+    outcome: dict = {}
+
+    def _runner():
         try:
-            return loop.run_until_complete(get_song_metadata_async(artist, song))
-        finally:
-            loop.close()
+            outcome["value"] = asyncio.run(get_song_metadata_async(artist, song))
+        except BaseException as exc:
+            outcome["error"] = exc
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
+    thread.join()
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["value"]
