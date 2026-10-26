@@ -3,26 +3,65 @@ name: Update Contributors
 on:
   push:
     branches:
-      - main  # Triggers when a PR is merged into main (which counts as a push)
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: update-contributors
+  cancel-in-progress: true
+
 jobs:
-  contrib-readme-job:
+  update-contributors:
     runs-on: ubuntu-latest
-    name: Auto-update Contributors in README
+    name: Update contributors in README
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Update Contributor List
-        uses: akhilmhdh/contributors-readme-action@v2.3.11
+      - name: Generate contributors table
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          image_size: 100
-          columns_per_row: 6
-          commit_message: "docs(contributors): update contributors in README [skip ci]"
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python scripts/update_contributors.py
+
+      - name: Commit and push update
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- README.md; then
+            echo "README.md is already up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "docs(contributors): update contributors [skip ci]"
+
+          # Pick up any commits that landed while this job was running.
+          git pull --rebase origin main
+
+          if git push origin HEAD:main; then
+            echo "Pushed contributors update to main."
+            exit 0
+          fi
+
+          # Protected branch: push a branch and open a pull request instead.
+          branch="automation/contributors-${GITHUB_RUN_ID}"
+          git checkout -b "$branch"
+          git push -u origin "$branch"
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "docs(contributors): update contributors" \
+            --body "Automated update of the contributors table in README.md." \
+            || echo "A pull request may already exist for this branch."
