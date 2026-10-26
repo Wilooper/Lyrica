@@ -1,0 +1,144 @@
+name: Generate Release Notes
+run-name: "Release notes: ${{ inputs.tag || 'auto' }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v1.5.0). Leave blank to auto-generate the next vX.Y.Z."
+        required: false
+        type: string
+      title:
+        description: "Release title. Leave blank to use the tag."
+        required: false
+        type: string
+      base_tag:
+        description: "Start tag or commit. Leave blank to use the latest published release."
+        required: false
+        type: string
+      prerelease:
+        description: "Mark as a pre-release. Does not move the Docker :latest tag."
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: generate-release
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  publish-release:
+    runs-on: ubuntu-latest
+    name: Generate notes and publish release
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Generate release notes
+        id: notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_TITLE: ${{ inputs.title }}
+          INPUT_BASE: ${{ inputs.base_tag }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+          NOTES_FILE: ${{ runner.temp }}/release-notes.md
+        run: |
+          set -euo pipefail
+          args=(
+            --tag "$INPUT_TAG"
+            --title "$INPUT_TITLE"
+            --base "$INPUT_BASE"
+            --head "$GITHUB_SHA"
+            --notes-file "$NOTES_FILE"
+          )
+          if [ "$INPUT_PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          python scripts/generate_release_notes.py "${args[@]}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}
+          flavor: |
+            latest=${{ steps.notes.outputs.prerelease != 'true' }}
+          tags: |
+            type=raw,value=${{ steps.notes.outputs.tag }}
+            type=semver,pattern={{version}},value=${{ steps.notes.outputs.tag }},enable=${{ steps.notes.outputs.is_semver == 'true' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.notes.outputs.tag }},enable=${{ steps.notes.outputs.is_semver == 'true' }}
+            type=semver,pattern={{major}},value=${{ steps.notes.outputs.tag }},enable=${{ steps.notes.outputs.is_semver == 'true' }}
+
+      - name: Build and push release image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.notes.outputs.tag }}
+          TITLE: ${{ steps.notes.outputs.title }}
+          NOTES_FILE: ${{ runner.temp }}/release-notes.md
+          PRERELEASE: ${{ steps.notes.outputs.prerelease }}
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          args=(
+            release create "$TAG"
+            --target "$TARGET_SHA"
+            --title "$TITLE"
+            --notes-file "$NOTES_FILE"
+          )
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          else
+            args+=(--latest)
+          fi
+          gh "${args[@]}"
+
+      - name: Add release notes to workflow summary
+        if: always() && steps.notes.outputs.tag != ''
+        env:
+          TAG: ${{ steps.notes.outputs.tag }}
+          NOTES_FILE: ${{ runner.temp }}/release-notes.md
+        run: |
+          if [ -f "$NOTES_FILE" ]; then
+            {
+              echo "## Released $TAG"
+              echo
+              cat "$NOTES_FILE"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
