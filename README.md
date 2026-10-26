@@ -224,6 +224,40 @@ Results:
 Contributions are warmly welcomed! Please read our [Contributing Guide](docs/development/contributing.md) and [Code of Conduct](CODE_OF_CONDUCT.md) before submitting a Pull Request.
 
 <!-- readme: contributors -start -->
+<table>
+	<tbody>
+		<tr>
+            <td align="center">
+                <a href="https://github.com/Wilooper">
+                    <img src="https://avatars.githubusercontent.com/u/198341775?v=4" width="100;" alt="Wilooper"/>
+                    <br />
+                    <sub><b>Shaurya singh</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/thinkely">
+                    <img src="https://avatars.githubusercontent.com/u/321372956?v=4" width="100;" alt="thinkely"/>
+                    <br />
+                    <sub><b>Shaurya singh</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/rombat">
+                    <img src="https://avatars.githubusercontent.com/u/9024503?v=4" width="100;" alt="rombat"/>
+                    <br />
+                    <sub><b>Romain Batigne</b></sub>
+                </a>
+            </td>
+            <td align="center">
+                <a href="https://github.com/shelbeely">
+                    <img src="https://avatars.githubusercontent.com/u/2256469?v=4" width="100;" alt="shelbeely"/>
+                    <br />
+                    <sub><b>Shelbee Johnson </b></sub>
+                </a>
+            </td>
+		</tr>
+	<tbody>
+</table>
 <!-- readme: contributors -end -->
 
 ---
