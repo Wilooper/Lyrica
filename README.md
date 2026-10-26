@@ -1,7 +1,7 @@
 # Lyrica
 
 <p align="center">
-  <img src="static/banner.png" alt="Lyrica Banner" width="600" onerror="this.style.display='none'"/>
+  <img src="static/banner.jpg" alt="Lyrica Banner" width="600" onerror="this.style.display='none'"/>
 </p>
 
 <p align="center">
