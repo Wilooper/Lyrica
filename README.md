@@ -225,20 +225,20 @@ Contributions are warmly welcomed! Please read our [Contributing Guide](docs/dev
 
 <!-- readme: contributors -start -->
 <table>
-	<tbody>
-		<tr>
+    <tbody>
+        <tr>
             <td align="center">
                 <a href="https://github.com/Wilooper">
                     <img src="https://avatars.githubusercontent.com/u/198341775?v=4" width="100;" alt="Wilooper"/>
                     <br />
-                    <sub><b>Shaurya singh</b></sub>
+                    <sub><b>Shaurya singh (@Wilooper)</b></sub>
                 </a>
             </td>
             <td align="center">
                 <a href="https://github.com/thinkely">
                     <img src="https://avatars.githubusercontent.com/u/321372956?v=4" width="100;" alt="thinkely"/>
                     <br />
-                    <sub><b>Shaurya singh</b></sub>
+                    <sub><b>Shaurya singh (@thinkely)</b></sub>
                 </a>
             </td>
             <td align="center">
@@ -252,11 +252,11 @@ Contributions are warmly welcomed! Please read our [Contributing Guide](docs/dev
                 <a href="https://github.com/shelbeely">
                     <img src="https://avatars.githubusercontent.com/u/2256469?v=4" width="100;" alt="shelbeely"/>
                     <br />
-                    <sub><b>Shelbee Johnson </b></sub>
+                    <sub><b>Shelbee Johnson</b></sub>
                 </a>
             </td>
-		</tr>
-	<tbody>
+        </tr>
+    </tbody>
 </table>
 <!-- readme: contributors -end -->
 
