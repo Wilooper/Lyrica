@@ -23,25 +23,25 @@
                     "status": {
                       "type": "string"
                     },
+                    "version": {
+                      "type": "string"
+                    },
                     "parameters": {
                       "type": "string"
                     },
-                    "endpoints": {
-                      "type": "string"
-                    },
-                    "timestamp": {
-                      "type": "string"
-                    },
-                    "api": {
+                    "description": {
                       "type": "string"
                     },
                     "fetchers": {
                       "type": "string"
                     },
-                    "version": {
+                    "endpoints": {
                       "type": "string"
                     },
-                    "description": {
+                    "api": {
+                      "type": "string"
+                    },
+                    "timestamp": {
                       "type": "string"
                     }
                   }
@@ -67,14 +67,6 @@
             }
           },
           {
-            "name": "translate",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "mood",
             "in": "query",
             "required": false,
@@ -83,7 +75,7 @@
             }
           },
           {
-            "name": "song",
+            "name": "translate",
             "in": "query",
             "required": false,
             "schema": {
@@ -99,55 +91,7 @@
             }
           },
           {
-            "name": "fast",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "word",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "language",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "country",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "timestamp",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "metadata",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "timestamps",
             "in": "query",
             "required": false,
             "schema": {
@@ -164,6 +108,62 @@
           },
           {
             "name": "sequence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "metadata",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "word",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "fast",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "language",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "song",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "timestamps",
             "in": "query",
             "required": false,
             "schema": {
@@ -208,7 +208,7 @@
         "operationId": "metadata_get",
         "parameters": [
           {
-            "name": "artist",
+            "name": "song",
             "in": "query",
             "required": false,
             "schema": {
@@ -216,7 +216,7 @@
             }
           },
           {
-            "name": "song",
+            "name": "artist",
             "in": "query",
             "required": false,
             "schema": {
@@ -253,7 +253,7 @@
         "operationId": "trending_get",
         "parameters": [
           {
-            "name": "countries",
+            "name": "country",
             "in": "query",
             "required": false,
             "schema": {
@@ -261,7 +261,7 @@
             }
           },
           {
-            "name": "country",
+            "name": "countries",
             "in": "query",
             "required": false,
             "schema": {
@@ -301,7 +301,7 @@
         "operationId": "top_queries_get",
         "parameters": [
           {
-            "name": "days",
+            "name": "country",
             "in": "query",
             "required": false,
             "schema": {
@@ -309,7 +309,7 @@
             }
           },
           {
-            "name": "country",
+            "name": "days",
             "in": "query",
             "required": false,
             "schema": {
@@ -559,19 +559,19 @@
                     "status": {
                       "type": "string"
                     },
+                    "limit": {
+                      "type": "string"
+                    },
                     "error": {
                       "type": "string"
                     },
-                    "results": {
-                      "type": "string"
-                    },
-                    "limit": {
+                    "query": {
                       "type": "string"
                     },
                     "total": {
                       "type": "string"
                     },
-                    "query": {
+                    "results": {
                       "type": "string"
                     }
                   }
@@ -725,10 +725,10 @@
                     "status": {
                       "type": "string"
                     },
-                    "error": {
+                    "pool_size": {
                       "type": "string"
                     },
-                    "pool_size": {
+                    "error": {
                       "type": "string"
                     },
                     "message": {
@@ -768,10 +768,10 @@
                     "status": {
                       "type": "string"
                     },
-                    "error": {
+                    "pool_size": {
                       "type": "string"
                     },
-                    "pool_size": {
+                    "error": {
                       "type": "string"
                     },
                     "message": {
@@ -809,10 +809,10 @@
                     "status": {
                       "type": "string"
                     },
-                    "error": {
+                    "pool_size": {
                       "type": "string"
                     },
-                    "pool_size": {
+                    "error": {
                       "type": "string"
                     },
                     "message": {
@@ -874,10 +874,10 @@
                     "status": {
                       "type": "string"
                     },
-                    "message": {
+                    "pool_size": {
                       "type": "string"
                     },
-                    "pool_size": {
+                    "message": {
                       "type": "string"
                     }
                   }
@@ -902,6 +902,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
+                    "timestamp": {
+                      "type": "string"
+                    },
                     "status": {
                       "type": "string"
                     },
@@ -909,9 +912,6 @@
                       "type": "string"
                     },
                     "error": {
-                      "type": "string"
-                    },
-                    "timestamp": {
                       "type": "string"
                     }
                   }
@@ -1025,19 +1025,19 @@
                     "status": {
                       "type": "string"
                     },
+                    "version": {
+                      "type": "string"
+                    },
                     "service": {
                       "type": "string"
                     },
-                    "uptime_seconds": {
+                    "mode": {
                       "type": "string"
                     },
                     "timestamp": {
                       "type": "string"
                     },
-                    "version": {
-                      "type": "string"
-                    },
-                    "mode": {
+                    "uptime_seconds": {
                       "type": "string"
                     }
                   }
