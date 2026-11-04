@@ -16,7 +16,7 @@ GET /lyrics/
 | `song` | string | **Yes** | — | Song title (e.g., `Bohemian Rhapsody`) |
 | `timestamps` | boolean | No | `false` | Return synchronized lyrics with start/end millisecond timestamps |
 | `word` | boolean | No | `false` | Return word-level synchronized timing entries (requires `timestamps=true`) |
-| `syllabus` | boolean | No | `false` | Return syllable-level timing entries via Apple Music (requires `timestamps=true` & `APPLE_MUSIC_DEVELOPER_TOKEN`) |
+| `syllabus` | boolean | No | `false` | Return syllable-level timing entries. Tries Apple Music first, then Lrcmux word sync (requires `timestamps=true`). |
 | `sequence` | string | No | All | Comma-separated list of source IDs or names (e.g. `2,7,1` or `lrclib,lrcmux,genius`) |
 | `pass` | boolean | No | `false` | When `true`, strictly searches sources in `sequence` without falling back to others |
 | `fast` | boolean | No | `false` | Fast parallel mode: queries providers concurrently and returns first valid match |
@@ -36,10 +36,14 @@ Lyrica supports three levels of lyrics synchronization:
 ```mermaid
 graph TD
     A[Lyrics Request with timestamps=true] --> B{Granularity Requested}
-    B -- syllabus=true --> C["Syllable-Level (Apple Music)<br/>Vocal syllables with exact offsets"]
+    B -- syllabus=true --> C["Syllable-Level (Apple Music, then Lrcmux)<br/>Vocal syllables with exact offsets"]
     B -- word=true --> D["Word-Level (Lrcmux / Apple Music)<br/>Individual words with millisecond timings"]
-    B -- default --> E["Line-Level (LRCLIB / YouTube / NetEase / etc.)<br/>Standard sentence-by-sentence LRC timestamps"]
+    B -- default --> E["Line-Level (LRCLIB / Lrcmux / NetEase / etc.)<br/>Standard sentence-by-sentence LRC timestamps"]
 ```
+
+Word and syllable requests are automatically restricted to Lrcmux and Apple
+Music; line-only providers are not queried unless the caller supplies an
+explicit `pass=true` sequence. YouTube Music is temporarily disabled.
 
 ### 1. Line-Level (`timestamps=true`)
 Returns lines with millisecond `start_time` and `end_time`:
@@ -72,7 +76,7 @@ Adds a `words` array to each line for dynamic word-by-word karaoke highlighting:
 ```
 
 ### 3. Syllable-Level (`timestamps=true&syllabus=true`)
-Provides sub-word syllable timing entries via Apple Music AMP API.
+Provides sub-word syllable timing entries. Lyrica tries Apple Music AMP first, then Lrcmux word sync; if neither has the requested granularity, it returns the best lower tier from those providers when fallback is allowed.
 
 ---
 

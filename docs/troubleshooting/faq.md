@@ -12,14 +12,11 @@ This guide addresses common questions, error codes, and troubleshooting steps.
 ### 2. Why am I receiving `403 Forbidden` on `/cache/clear` or admin endpoints?
 Administrative routes require the `ADMIN_KEY` configured in `.env`. Ensure you pass it via the `X-ADMIN-KEY` header or `?key=` query parameter. If `ADMIN_KEY` is not set in `.env`, all administrative actions are locked for security.
 
-### 3. YouTube Music returns empty results or errors on cloud servers.
-Major cloud platforms (AWS, DigitalOcean, Hetzner, Render) have datacenter IP ranges that YouTube blocks by default.
-- **Solution 1**: Set `YT_PROXY_URL` in `.env` to route YouTube queries through a residential proxy.
-- **Solution 2**: Supply a YouTube cookies export via `YT_COOKIES_PATH=/path/to/cookies.txt`.
-- **Solution 3**: Fall back to LRCLIB or Lrcmux by adjusting `sequence=lrclib,lrcmux`.
+### 3. Why is YouTube Music missing from the provider list?
+YouTube Music is temporarily disabled while its fetcher is rebuilt; the previous 3-layer implementation added latency without reliable output. It is not loaded, so `sequence=youtube` will not use it. Use LRCLIB or Lrcmux instead. `YT_PROXY_URL` and `YT_COOKIES_PATH` remain reserved for the rebuilt fetcher.
 
 ### 4. Why is Apple Music returning `None` or skipped?
-Apple Music requires an Apple Music Developer JWT token. If `APPLE_MUSIC_DEVELOPER_TOKEN` is not set in `.env`, Lyrica automatically skips Apple Music during startup without error and degrades gracefully to Lrcmux or LRCLIB.
+Apple Music requires an Apple Music Developer JWT token. If `APPLE_MUSIC_DEVELOPER_TOKEN` is not set in `.env`, Lyrica does not load the Apple Music fetcher at startup. Word and syllable requests then fall back to Lrcmux (or return `tier_unavailable` with `allow_lower=false`); they do not fan out to line-only providers.
 
 ### 5. How do I prevent Groq LLM rate limits during lyrics translation?
 Groq enforces strict per-minute token and request limits. To avoid 429 errors:

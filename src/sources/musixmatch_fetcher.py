@@ -2,16 +2,16 @@
 src/sources/musixmatch_fetcher.py
 
 Fetches synced (LRC) or plain lyrics from Musixmatch via the syncedlyrics
-library. Token-aware: if MUSIXMATCH_TOKEN is set in the environment, it is
-passed to syncedlyrics for authenticated (higher-quality) results. If no
-token is set, it falls back gracefully to the unauthenticated mode.
+library. The unauthenticated endpoint returns 401, so this fetcher is only
+instantiated when MUSIXMATCH_TOKEN is configured. The token is passed to
+syncedlyrics for authenticated (higher-quality) results.
 
 Environment variable:
-  MUSIXMATCH_TOKEN  — optional Musixmatch user token.
+  MUSIXMATCH_TOKEN  — required to enable this provider.
                       Obtain one from https://developer.musixmatch.com/
 
 Strategy:
-  - Read token from env (may be empty/None — that's fine).
+  - Read the token from env (the registry gates loading on it).
   - Ask syncedlyrics for LRC with provider="Musixmatch".
   - Parse LRC into timed_lyrics using the shared parse_lrc() helper.
   - Run syncedlyrics (blocking) in a thread pool to stay async-friendly.

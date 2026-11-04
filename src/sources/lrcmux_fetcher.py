@@ -25,7 +25,7 @@ _UA = "Lyrica/1.0 (https://github.com/Wilooper/Lyrica)"
 class LrcmuxFetcher(BaseFetcher):
     source_name = "lrcmux"
 
-    async def fetch(self, artist: str, song: str, timestamps: bool = False, word_level: bool = False):
+    async def fetch(self, artist: str, song: str, timestamps: bool = False, word_level: bool = False, syllabus: bool = False):
         """
         Fetch lyrics from lrcmux (targeting the musixmatch source).
 

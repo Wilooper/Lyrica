@@ -34,7 +34,9 @@ Create a file named `.lyrica.config` in your project root:
 default_source = lrclib
 
 # Comma-separated default source sequence
-sequence = lrclib,lrcmux,genius,youtube,netease,megalobiz,musixmatch,apple_music
+# YouTube Music is temporarily disabled and is omitted.
+# Musixmatch and Apple Music are skipped automatically when their tokens are unset.
+sequence = lrclib,lrcmux,genius,netease,megalobiz,musixmatch,apple_music
 
 # Default modes when omitted from request query params
 fast_mode = false
@@ -59,6 +61,7 @@ memory_cache = true
 [sources]
 # Disable specific sources entirely across the server
 disable_genius = false
+# YouTube Music is temporarily disabled globally; reserved for the rebuild.
 disable_youtube = false
 disable_netease = false
 disable_megalobiz = false

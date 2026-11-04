@@ -61,7 +61,7 @@ If you prefer to run Lyrica without Redis using local disk caching:
 
 ```bash
 # Build the production image
-docker build -t lyrica:1.5.0 .
+docker build -t lyrica:v2-beta-rollout .
 
 # Run container
 docker run -d \
@@ -69,7 +69,7 @@ docker run -d \
   -p 7860:7860 \
   --env-file .env \
   -v $(pwd)/cache_data:/app/cache_data \
-  lyrica:1.5.0
+  lyrica:v2-beta-rollout
 ```
 
 ---

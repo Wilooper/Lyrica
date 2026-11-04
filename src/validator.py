@@ -30,10 +30,23 @@ Architecture
    the requested title is the base of the returned title, not just a substring.
 """
 
-from difflib import SequenceMatcher
 import re
 import unicodedata
 from src.logger import get_logger
+
+try:  # rapidfuzz is a small wheel and ~5-10x faster than difflib
+    from rapidfuzz import fuzz as _rf_fuzz
+except ImportError:  # pragma: no cover - optional acceleration
+    _rf_fuzz = None
+
+if _rf_fuzz is None:  # pragma: no cover - fallback keeps zero-config installs working
+    from difflib import SequenceMatcher
+
+    def _ratio(a: str, b: str) -> float:
+        return SequenceMatcher(None, a, b).ratio()
+else:
+    def _ratio(a: str, b: str) -> float:
+        return _rf_fuzz.ratio(a, b) / 100.0
 
 logger = get_logger("validator")
 
@@ -114,7 +127,8 @@ def split_artists(artist_str: str) -> list:
 def extract_artist_song_from_result(result: dict) -> tuple:
     """Return (list[str], str) — normalised artist names and song title."""
     artist = (result.get("artist") or result.get("artists") or
-              result.get("artist_name") or result.get("trackArtist"))
+              result.get("artist_name") or result.get("artistName") or
+              result.get("trackArtist"))
     song = (result.get("song") or result.get("song_title") or
             result.get("title") or result.get("name") or result.get("trackName"))
 
@@ -144,7 +158,7 @@ def get_similarity_ratio(s1: str, s2: str) -> float:
     b = normalize_string(s2)
     if not a or not b:
         return 0.0
-    sim = SequenceMatcher(None, a, b).ratio()
+    sim = _ratio(a, b)
     if len(b) > len(a) * 1.5:
         sim *= (0.5 + 0.5 * (len(a) / len(b)))
     return sim

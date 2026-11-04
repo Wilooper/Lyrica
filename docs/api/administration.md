@@ -17,7 +17,7 @@ GET /health
 ```json
 {
   "status": "healthy",
-  "version": "1.5.0",
+  "version": "2.0.0b1",
   "service": "Lyrica",
   "mode": "production",
   "uptime_seconds": 120.4
@@ -35,7 +35,7 @@ it is unavailable.
 ```json
 {
   "status": "ready",
-  "version": "1.5.0",
+  "version": "2.0.0b1",
   "service": "Lyrica",
   "redis": "connected"
 }

@@ -8,22 +8,16 @@ Lyrica employs a 3-tier caching system designed to minimize external provider qu
 
 ```mermaid
 graph TD
-    Query[Incoming Request] --> Key["Generate SHA-256 Key (v5)"]
-    Key --> L1{"L1: In-Memory LRU<br/>(Capacity: 5000 in prod)"}
-
-    L1 -- Hit (~0.0003 ms) --> Return[Return Response]
-    L1 -- Miss --> L2{"L2: Redis Distributed Cache<br/>(REDIS_URL)"}
-
-    L2 -- Hit (~0.5 ms) --> PromoteL1["Promote into L1<br/>(12h TTL in prod)"]
-    PromoteL1 --> Return
-
-    L2 -- Miss --> L3{"L3: Disk JSON Cache<br/>(cache_data/)"}
-
-    L3 -- Hit (~1.5 ms) --> PromoteL2["Promote into L2 & L1"]
-    PromoteL2 --> Return
-
-    L3 -- Miss --> Network["Fetch from Providers"]
-    Network --> SaveAll["Save into L1 + L2 + L3"]
+    Query[Incoming Request] --> Key["Canonical Key (v6)"]
+    Key --> View{"View Cache<br/>pre-serialized body"}
+    View -- Hit (~0.2 ms) --> Return[Return Response]
+    View -- Miss --> Raw{"Raw Lyrics Cache<br/>richest tier"}
+    Raw -- Hit --> Derive["Derive requested tier"]
+    Derive --> Return
+    Raw -- Miss --> SF["Singleflight + negative cache"]
+    SF --> Network["Fetch from Providers"]
+    Network --> Verify["Verify confidence"]
+    Verify --> SaveAll["Save raw entry + rendered view"]
     SaveAll --> Return
 ```
 
@@ -39,32 +33,47 @@ graph TD
 
 ---
 
-## Cache Key Formulation (`CACHE_VERSION = "v5"`)
+## Cache Key Formulation (`CACHE_VERSION = "v6"`)
 
-Cache keys are deterministic **SHA-256 hashes** computed over a canonical JSON object:
+Lyrica uses **two keys** instead of one flag-heavy key:
+
+1. **Raw key** — canonical `(artist, title, sequence, pass)`. Flags such as
+   `fast`, `mood`, `metadata`, `translate`, and the sync booleans are excluded.
+   One provider fetch therefore serves every flag combination.
+2. **View key** — the raw identity plus the render flags. It stores the
+   fully enriched response *and* its serialized JSON body, so a hit does no
+   tier derivation or JSON encoding.
 
 ```python
-payload = {
-    "v": "v5",
-    "artist": "coldplay",
-    "song": "yellow",
-    "timestamps": True,
-    "sequence": "",
-    "fast": False,
-    "mood": False,
-    "metadata": False,
-    "translate": False,
-    "romanize": False,
-    "language": "en",
-    "word_level": True,
-    "syllabus": False,
-}
+# Raw entry: one fetch per song, not one per flag combination
+raw_key = make_lyrics_cache_key("Coldplay", "Yellow")
+
+# Rendered view: exact response for these flags
+view_key = make_view_cache_key(
+    "Coldplay", "Yellow",
+    timestamps=True, word_level=True, mood=False,
+)
 ```
 
-This guarantees:
-1. **Collision Immunity**: Changing any flag (`timestamps`, `word_level`, `syllabus`, `translate`, `language`) produces a completely unique cache key.
-2. **Filesystem Safety**: Hashes are hex strings, avoiding invalid directory characters across operating systems.
-3. **Redis Namespace Isolation**: Keys are stored in Redis under the `lyrica:lyrics:<hash>` namespace.
+Normalization (`src/core/normalizer.py`) applies Unicode NFKC, case folding,
+and strips edition noise (`feat.`, `(Remastered)`, `(Live)`), so
+`"The  Beatles"` and `"the beatles"` share one entry.
+
+The raw entry stores the **richest tier fetched** (`syllable > word > line >
+plain`). Lower tiers are derived on demand. A plain entry can never satisfy a
+timed request because timestamps cannot be invented. Upgrade attempts are
+monotonic: a lower-tier result never overwrites a richer cached entry.
+
+---
+
+## Negative Cache and Singleflight
+
+- A confirmed "not found" is cached for `LYRICA_NEGATIVE_TTL` seconds
+  (default 1 hour). Provider errors and rejected wrong-song results are
+  **never** negative-cached.
+- Concurrent requests for the same raw key are coalesced in-process
+  (`src/core/singleflight.py`), so a cache stampede produces exactly one
+  upstream fetch. The negative cache uses Redis automatically when configured.
 
 ---
 
@@ -84,9 +93,12 @@ When an item misses L1 memory but hits in L2 Redis or L3 Disk, Lyrica automatica
 
 ## Performance Benchmark
 
-Results measured under high-concurrency stress test (`Test/test_performance.py`):
+Results measured under high-concurrency stress test (`Test/test_performance.py`) during the v2-beta-rollout release run:
 
-- **L1 In-Memory LRU Throughput**: **89,182 requests/second**
+- **L1 In-Memory LRU Throughput**: **68,624 requests/second**
 - **Median (p50) Latency**: **0.0003 ms**
-- **99th Percentile (p99) Latency**: **0.0011 ms**
+- **95th Percentile (p95) Latency**: **0.0015 ms**
+- **99th Percentile (p99) Latency**: **0.0034 ms**
 - **Error Rate**: 0.0%
+
+These are local microbenchmark results, not a production HTTP capacity guarantee. See the [release notes](../release-notes/v2-beta-rollout.md) for the full in-process and live HTTP matrices.

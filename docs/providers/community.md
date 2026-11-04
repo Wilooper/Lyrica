@@ -23,9 +23,10 @@ curl "http://127.0.0.1:9999/lyrics/?artist=Queen&song=Radio%20Ga%20Ga&sequence=l
 
 **Status**: Free, no token required.
 
-[Lrcmux](https://api.lrcmux.dev) aggregates synchronized lyrics from Musixmatch and delivers them with **word-level synchronization**.
+[Lrcmux](https://api.lrcmux.dev) aggregates synchronized lyrics from Musixmatch. It can return **word-level synchronization** when the upstream track has richsync data; otherwise it returns line-level or plain text.
 
-- **Capabilities**: Line-level timestamps and millisecond-accurate word-level timestamps (`&word=true`).
+- **Capabilities**: Line-level timestamps, word-level timestamps when available (`&word=true`), and plain text fallback.
+- **Word/Syllable Routing**: Automatic word and syllable requests are restricted to Lrcmux and Apple Music.
 - **Base URL Override**: `LRCMUX_API_URL` (default: `https://api.lrcmux.dev`).
 
 ```bash
@@ -36,16 +37,14 @@ curl "http://127.0.0.1:9999/lyrics/?artist=Adele&song=Hello&sequence=lrcmux&time
 
 ## 3. YouTube Music (`youtube`, ID 3)
 
-**Status**: Free, 3-layer fallback.
+**Status**: Temporarily disabled. The current 3-layer fetcher adds latency without reliable output and is being rebuilt. It is not loaded into the provider registry, so `sequence=youtube` will not use it.
 
-Queries YouTube Music and YouTube video transcripts via a 3-layer architecture:
+The previous implementation queried YouTube Music and YouTube video transcripts via:
 1. `ytmusicapi` for official YouTube Music tracks.
 2. `youtube-transcript-api` for automated and community subtitles.
 3. `yt-dlp` for raw subtitle extraction.
 
-- **Capabilities**: Line-level timestamps and plain text lyrics.
-- **Dedicated Proxy**: Can be configured independently via `YT_PROXY_URL` in `.env`.
-- **Cookies / Authentication**: Optional `YT_COOKIES_PATH` to bypass datacenter IP restrictions.
+`YT_PROXY_URL` and `YT_COOKIES_PATH` remain reserved for the rebuilt fetcher.
 
 ---
 
@@ -71,4 +70,4 @@ Community-contributed LRC timestamp database with strong coverage of indie, elec
 
 Direct connection to the Musixmatch API.
 - **Authentication**: `MUSIXMATCH_TOKEN` in `.env`.
-- Note: If `MUSIXMATCH_TOKEN` is not set, this provider is skipped. For tokenless Musixmatch data with word-level sync, use **Lrcmux (ID 7)** instead.
+- Note: If `MUSIXMATCH_TOKEN` is not set, this fetcher is not instantiated at all. For tokenless Musixmatch data, use **Lrcmux (ID 7)** instead.

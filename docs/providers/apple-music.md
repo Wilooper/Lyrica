@@ -45,7 +45,7 @@ To specifically target Apple Music with syllable sync:
 curl "http://127.0.0.1:9999/lyrics/?artist=Coldplay&song=Yellow&timestamps=true&syllabus=true&sequence=apple_music"
 ```
 
-To allow Apple Music to fall back to Lrcmux or LRCLIB if syllable timing is unavailable:
+To let Lyrica try Apple Music first and then fall back to Lrcmux if syllable/word timing is unavailable (line-only providers are not queried for these requests):
 
 ```bash
 curl "http://127.0.0.1:9999/lyrics/?artist=Coldplay&song=Yellow&timestamps=true&syllabus=true"

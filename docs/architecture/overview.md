@@ -33,15 +33,15 @@ graph TD
         MetadataEng["Async Metadata Aggregator (src/metadata_extractor.py)"]
     end
 
-    subgraph Providers["Lyrics Providers (8 Sources)"]
+    subgraph Providers["Lyrics Providers (7 Available)"]
         P1["LRCLIB"]
         P2["Lrcmux (Musixmatch)"]
         P3["Genius (Depth-tracking)"]
-        P4["Apple Music (Syllable & Word)"]
-        P5["YouTube Music"]
+        P4["Apple Music (Syllable & Word, token)"]
+        P5["YouTube Music (temporarily disabled)"]
         P6["NetEase"]
         P7["Megalobiz"]
-        P8["Musixmatch"]
+        P8["Musixmatch (token)"]
     end
 
     Client --> Router

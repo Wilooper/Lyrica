@@ -174,7 +174,7 @@ def _parse_version(value: str) -> tuple[int, int, int] | None:
     return int(match.group(1)), int(match.group(2)), int(match.group(3))
 
 
-def _resolve_tag(requested: str) -> str:
+def _resolve_tag(requested: str, allow_existing: bool = False) -> str:
     tag = requested.strip()
     if tag:
         if not _valid_tag(tag):
@@ -184,7 +184,7 @@ def _resolve_tag(requested: str) -> str:
                 f"Tag {tag!r} is not a valid Docker tag. "
                 "Use letters, numbers, dots, underscores, or hyphens."
             )
-        if _tag_exists(tag):
+        if _tag_exists(tag) and not allow_existing:
             raise RuntimeError(
                 f"Tag {tag!r} already exists. Choose a new tag or delete the old one."
             )
@@ -379,6 +379,11 @@ def _write_outputs(values: dict[str, str]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tag", default="", help="Release tag. Empty = next patch.")
+    parser.add_argument(
+        "--allow-existing-tag",
+        action="store_true",
+        help="Allow --tag to reference an existing git tag.",
+    )
     parser.add_argument("--title", default="", help="Release title. Empty = tag.")
     parser.add_argument("--base", default="", help="Previous release tag or commit.")
     parser.add_argument("--head", default="HEAD", help="Commit to release.")
@@ -400,7 +405,7 @@ def main() -> int:
 
     try:
         base = args.base.strip() or _latest_release_tag(repository, token)
-        tag = _resolve_tag(args.tag)
+        tag = _resolve_tag(args.tag, allow_existing=args.allow_existing_tag)
         title = args.title.strip() or tag
         if "\n" in title or "\r" in title:
             raise RuntimeError("Release title must be a single line")

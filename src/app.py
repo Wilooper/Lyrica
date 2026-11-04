@@ -1,13 +1,13 @@
 from flask import Flask, g, jsonify, request
 from flask.json.provider import DefaultJSONProvider
 from flask_cors import CORS
-from flask_compress import Compress
 from src.logger import get_logger
 from src import __version__
 from src.router import register_routes
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.middleware.proxy_fix import ProxyFix
+import hashlib
 import hmac
 import os
 import time
@@ -57,6 +57,29 @@ class _ORJSONProvider(DefaultJSONProvider):
 def _is_production() -> bool:
     """Check if running in production mode (Docker / LYRICA_ENV=production)."""
     return os.getenv("LYRICA_ENV", "").lower() == "production"
+
+
+# Only keys the operator explicitly configured may get their own bucket.
+# Without this check any client could rotate an arbitrary X-API-Key header and
+# bypass the IP limit.
+_TRUSTED_API_KEYS = {
+    key.strip()
+    for key in os.getenv("LYRICA_API_KEYS", "").split(",")
+    if key.strip()
+}
+
+
+def _rate_limit_key() -> str:
+    """Limit per trusted API key when supplied, falling back to the client IP.
+
+    The key itself is hashed before it reaches the limiter backend so raw
+    credentials never appear in Redis keys or logs.
+    """
+    api_key = request.headers.get("X-API-Key")
+    if api_key and str(api_key) in _TRUSTED_API_KEYS:
+        digest = hashlib.sha256(str(api_key).encode("utf-8")).hexdigest()[:16]
+        return f"key:{digest}"
+    return get_remote_address()
 
 
 def create_app():
@@ -116,8 +139,15 @@ def create_app():
             "expose_headers": ["Access-Control-Allow-Origin", "Retry-After", "X-Request-ID"],
         }})
 
-    # Gzip compress all responses — reduces payload size by 60-80%
-    Compress(app)
+    # Compression is optional and off by default. Lyrica ships lean payloads
+    # and leaves gzip/brotli to the operator's reverse proxy (design section 6).
+    if os.getenv("LYRICA_COMPRESS", "false").lower() in ("1", "true", "yes"):
+        try:
+            from flask_compress import Compress
+
+            Compress(app)
+        except ImportError:  # pragma: no cover - optional dependency
+            app.logger.warning("LYRICA_COMPRESS is set but flask-compress is not installed")
 
     # Correlate logs and responses. Incoming IDs are reused when present so a
     # request can be traced across the reverse proxy, API, and fetchers.
@@ -186,7 +216,7 @@ def create_app():
 
     limiter_enabled = os.getenv("RATELIMIT_ENABLED", "true").lower() in ("true", "1", "yes") and app.config.get("RATELIMIT_ENABLED", True)
     limiter = Limiter(
-        key_func=get_remote_address,
+        key_func=_rate_limit_key,
         storage_uri=storage_uri,
         headers_enabled=True,
         default_limits=[default_rate],

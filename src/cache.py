@@ -13,7 +13,7 @@ logger = get_logger("cache")
 # Ensure cache directory exists for disk cache fallback
 os.makedirs(CACHE_DIR, exist_ok=True)
 
-CACHE_VERSION = "v5"  # bump this if response format changes
+CACHE_VERSION = "v6"  # bump this if response format or stored shape changes
 
 # Resolved once at import time — getenv() in cache hot paths is measurable
 # under high request rates and makes TTLs inconsistent mid-request.
@@ -172,23 +172,89 @@ def make_cache_key(
     language: str = "en",
     word_level: bool = False,
     syllabus: bool = False,
+    pass_param: bool = False,
 ) -> str:
-    """Collision-safe, filesystem-safe, and Redis-safe cache key."""
-    # ``sequence`` arrives as a query string or as a list from .lyrica.config.
-    # Normalise both forms to the same key or the same request is cached twice.
-    if isinstance(sequence, (list, tuple)):
-        sequence = ",".join(str(part) for part in sequence)
-    # Collapse whitespace so "The  Beatles " and "the beatles" share a key.
-    artist_norm = " ".join((artist or "").split()).lower()
-    song_norm = " ".join((song or "").split()).lower()
+    """Backwards-compatible alias for the per-view key.
 
-    payload = {
+    New code should call :func:`make_view_cache_key` explicitly and use
+    :func:`make_lyrics_cache_key` for the shared raw entry.
+    """
+    return make_view_cache_key(
+        artist,
+        song,
+        timestamps=timestamps,
+        sequence=sequence,
+        mood=mood,
+        metadata=metadata,
+        translate=translate,
+        romanize=romanize,
+        language=language,
+        word_level=word_level,
+        syllabus=syllabus,
+        pass_param=pass_param,
+    )
+
+
+def _hash_payload(payload: dict) -> str:
+    raw = _json_dumps(payload)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def make_lyrics_cache_key(
+    artist: str,
+    song: str,
+    sequence=None,
+    pass_param: bool = False,
+) -> str:
+    """Canonical key for the raw (richest-tier) lyrics entry.
+
+    Flags such as ``fast``, ``mood``, ``metadata``, ``translate``, and the sync
+    booleans are deliberately excluded: they are views of the same song, not
+    different songs.
+    """
+    from src.core.normalizer import normalize_identity, normalize_sequence
+
+    artist_norm, song_norm = normalize_identity(artist, song)
+    return _hash_payload({
         "v": CACHE_VERSION,
+        "kind": "raw",
         "artist": artist_norm,
         "song": song_norm,
+        "sequence": normalize_sequence(sequence),
+        "pass": bool(pass_param),
+    })
+
+
+def make_view_cache_key(
+    artist: str,
+    song: str,
+    timestamps: bool = False,
+    sequence=None,
+    mood: bool = False,
+    metadata: bool = False,
+    translate: bool = False,
+    romanize: bool = False,
+    language: str = "en",
+    word_level: bool = False,
+    syllabus: bool = False,
+    pass_param: bool = False,
+    extra: Optional[dict] = None,
+) -> str:
+    """Key for a fully rendered response (enrichments included).
+
+    ``fast`` is excluded because it changes latency, not content.
+    """
+    from src.core.normalizer import normalize_identity, normalize_sequence
+
+    artist_norm, song_norm = normalize_identity(artist, song)
+    payload = {
+        "v": CACHE_VERSION,
+        "kind": "view",
+        "artist": artist_norm,
+        "song": song_norm,
+        "sequence": normalize_sequence(sequence),
+        "pass": bool(pass_param),
         "timestamps": bool(timestamps),
-        "sequence": (sequence or "").strip().lower(),
-        "fast": bool(fast),
         "mood": bool(mood),
         "metadata": bool(metadata),
         "translate": bool(translate),
@@ -197,42 +263,47 @@ def make_cache_key(
         "word_level": bool(word_level),
         "syllabus": bool(syllabus),
     }
+    if extra:
+        payload.update(extra)
+    return _hash_payload(payload)
 
-    raw = _json_dumps(payload)
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _get_cache_path(key: str) -> str:
     return os.path.join(CACHE_DIR, f"{key}.json")
 
 
-def load_from_cache(key: str):
-    """
-    Multi-tier cache loader:
-    1. Check L1 Memory LRU
-    2. Check L2 Redis (if configured)
-    3. Check L3 Disk Cache
-    """
-    # 1. Check L1 Memory Cache (microsecond response)
+def _normalize_record(data) -> dict:
+    """Accept old ``{"result": ...}`` files and new record dicts."""
+    if isinstance(data, dict) and ("result" in data or "body" in data or "tier" in data):
+        return {
+            "result": data.get("result"),
+            "tier": data.get("tier"),
+            "body": data.get("body"),
+        }
+    return {"result": data, "tier": None, "body": None}
+
+
+def _load_record(key: str) -> Optional[dict]:
+    """Multi-tier record loader: L1 memory -> L2 Redis -> L3 disk."""
+    # 1. L1 memory (microsecond response)
     mem_val = _MEMORY_CACHE.get(key)
     if mem_val is not None:
         return mem_val
 
-    # 2. Check L2 Redis Cache
+    # 2. L2 Redis
     redis_cli = get_redis_client()
     if redis_cli is not None:
         try:
             val = redis_cli.get(f"{_REDIS_KEY_PREFIX}{key}")
             if val:
-                data = _json_loads(val)
-                result = data.get("result") if isinstance(data, dict) and "result" in data else data
-                # Populate L1 cache (longer L1 TTL in production — lyrics are immutable)
-                _MEMORY_CACHE.set(key, result, ttl=_L1_TTL)
-                return result
+                record = _normalize_record(_json_loads(val))
+                _MEMORY_CACHE.set(key, record, ttl=_L1_TTL)
+                return record
         except Exception as e:
             logger.debug(f"Redis get failed for {key[:12]}: {e}")
 
-    # 3. Check L3 Disk Cache
+    # 3. L3 disk
     path = _get_cache_path(key)
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -254,9 +325,9 @@ def load_from_cache(key: str):
                 pass
             return None
 
-        result = data.get("result")
-        _MEMORY_CACHE.set(key, result, ttl=_L1_TTL)
-        return result
+        record = _normalize_record(data)
+        _MEMORY_CACHE.set(key, record, ttl=_L1_TTL)
+        return record
     except Exception:
         try:
             os.remove(path)
@@ -265,36 +336,73 @@ def load_from_cache(key: str):
         return None
 
 
-def save_to_cache(key: str, result):
-    """
-    Multi-tier cache saver:
-    1. Set in L1 Memory LRU
-    2. Set in L2 Redis (with TTL)
-    3. Set in L3 Disk Cache
-    """
-    # 1. Set L1 Memory Cache
-    _MEMORY_CACHE.set(key, result, ttl=CACHE_TTL)
+def _save_record(key: str, record: dict, ttl: int) -> None:
+    """Write one record to every configured tier."""
+    # L1 uses one TTL policy everywhere (previously save used CACHE_TTL while
+    # Redis/disk promotion used the shorter _L1_TTL).
+    _MEMORY_CACHE.set(key, record, ttl=min(ttl, _L1_TTL))
 
-    # 2. Set L2 Redis Cache
     redis_cli = get_redis_client()
     if redis_cli is not None:
         try:
-            payload = _json_dumps({"result": result, "expiry": time() + CACHE_TTL})
-            redis_cli.setex(f"{_REDIS_KEY_PREFIX}{key}", CACHE_TTL, payload)
+            payload = _json_dumps({**record, "expiry": time() + ttl})
+            redis_cli.setex(f"{_REDIS_KEY_PREFIX}{key}", ttl, payload)
         except Exception as e:
             logger.debug(f"Redis setex failed for {key[:12]}: {e}")
 
-    # 3. Set L3 Disk Cache
     path = _get_cache_path(key)
     try:
-        _atomic_write(path, _json_dumps({
-            "expiry": time() + CACHE_TTL,
-            "result": result,
-        }))
+        _atomic_write(path, _json_dumps({**record, "expiry": time() + ttl}))
     except Exception as e:
         # Disk full / read-only filesystem should never break a successful
         # request — Redis and memory tiers still hold the value.
         logger.debug(f"Disk cache write failed for {key[:12]}: {e}")
+
+
+def load_from_cache(key: str):
+    record = _load_record(key)
+    return record.get("result") if record else None
+
+
+def save_to_cache(key: str, result):
+    _save_record(key, {"result": result}, CACHE_TTL)
+
+
+def load_raw(key: str):
+    """Return ``(raw_result, tier)`` or ``None``."""
+    record = _load_record(key)
+    if not record:
+        return None
+    result = record.get("result")
+    if result is None:
+        return None
+    return result, (record.get("tier") or "plain")
+
+
+def save_raw(key: str, result, tier: str = "plain"):
+    _save_record(key, {"result": result, "tier": tier}, CACHE_TTL)
+
+
+def load_view(key: str):
+    """Return ``(result, serialized_body)`` or ``None``.
+
+    The body is stored so a cache hit can skip JSON encoding entirely.
+    """
+    record = _load_record(key)
+    if not record or record.get("result") is None:
+        return None
+    body = record.get("body")
+    if not body:
+        body = _json_dumps(record["result"])
+        record["body"] = body
+    return record["result"], body
+
+
+def save_view(key: str, result, body: Optional[str] = None):
+    if body is None:
+        body = _json_dumps(result)
+    _save_record(key, {"result": result, "body": body}, CACHE_TTL)
+
 
 
 def clear_cache():
@@ -337,6 +445,12 @@ def clear_cache():
     # cache. Imported lazily to avoid a circular import at module load time.
     translation_result = {}
     metadata_cleared = 0
+    negative_cleared = 0
+    try:
+        from src.core.negative_cache import negative_cache
+        negative_cleared = negative_cache.clear()
+    except Exception as e:
+        logger.warning(f"Negative cache clear failed: {e}")
     try:
         from src.translation_cache import clear_translation_cache
         translation_result = clear_translation_cache()
@@ -355,6 +469,7 @@ def clear_cache():
         "memory_cleared": True,
         "translation_cache": translation_result,
         "metadata_items_cleared": metadata_cleared,
+        "negative_items_cleared": negative_cleared,
     }
 
 
@@ -380,6 +495,12 @@ def cache_stats() -> Dict[str, Any]:
         except Exception as e:
             redis_info = {"connected": False, "error": str(e)}
 
+    try:
+        from src.core.negative_cache import negative_cache
+        negative = negative_cache.stats()
+    except Exception:
+        negative = {}
+
     return {
         "backend": "redis+memory+disk" if redis_info["connected"] else "memory+disk",
         "memory_l1_items": _MEMORY_CACHE.size(),
@@ -389,4 +510,5 @@ def cache_stats() -> Dict[str, Any]:
         "cache_dir": CACHE_DIR,
         "ttl_seconds": CACHE_TTL,
         "version": CACHE_VERSION,
+        "negative": negative,
     }

@@ -63,11 +63,28 @@ jobs:
             --base "$INPUT_BASE"
             --head "$GITHUB_SHA"
             --notes-file "$NOTES_FILE"
+            --allow-existing-tag
           )
           if [ "$INPUT_PRERELEASE" = "true" ]; then
             args+=(--prerelease)
           fi
           python scripts/generate_release_notes.py "${args[@]}"
+
+      - name: Append release-specific notes
+        env:
+          TAG: ${{ steps.notes.outputs.tag }}
+          NOTES_FILE: ${{ runner.temp }}/release-notes.md
+        run: |
+          set -euo pipefail
+          RELEASE_NOTE="docs/release-notes/${TAG}.md"
+          if [ -f "$RELEASE_NOTE" ]; then
+            {
+              echo
+              echo "---"
+              echo
+              cat "$RELEASE_NOTE"
+            } >> "$NOTES_FILE"
+          fi
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

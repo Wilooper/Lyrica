@@ -19,6 +19,9 @@ httpx==0.28.1                # async HTTP with high-concurrency connection pooli
 # ── Ultra-fast JSON serialization ────────────────────────────
 orjson>=3.10.0               # C-based JSON parsing (5-10x faster than stdlib json)
 
+# ── Fast fuzzy matching (optional acceleration) ──────────────
+rapidfuzz>=3.9.0             # C++ title/artist matching; falls back to difflib
+
 # ── Retry logic ──────────────────────────────────────────────
 tenacity==8.3.0              # exponential backoff in fetch_controller + fetchers
 

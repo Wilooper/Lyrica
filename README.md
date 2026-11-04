@@ -14,25 +14,36 @@
   <img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-brightgreen.svg?logo=python" alt="Python Versions">
   <img src="https://img.shields.io/badge/docker-ready-2496ED.svg?logo=docker&logoColor=white" alt="Docker Ready">
   <a href="https://wilooper.github.io/Lyrica/"><img src="https://img.shields.io/badge/docs-MkDocs%20Material-526CFE.svg?logo=materialformkdocs&logoColor=white" alt="Documentation"></a>
+  <img src="https://img.shields.io/badge/release-v2--beta--rollout-orange.svg" alt="Release: v2-beta-rollout">
 </p>
+
+> [!IMPORTANT]
+> This is the **v2-beta-rollout** beta release. The existing v1 API at
+> `/lyrics/` is unchanged; new clients should use `/v2/lyrics`. See
+> [the release notes](docs/release-notes/v2-beta-rollout.md) for test results,
+> performance matrices, and known limitations.
 
 ---
 
 ## 📌 Overview
 
-**Lyrica** aggregates song lyrics across **8 active sources** with intelligent multi-sync degradation, sub-millisecond multi-tier caching (89k+ requests/sec), and real-time neural translation/romanization powered by Groq LLMs (`openai/gpt-oss-120b`).
+**Lyrica** aggregates song lyrics across **5 zero-config sources** plus **2 token-gated sources** with intelligent multi-sync degradation, sub-millisecond multi-tier caching (68k+ L1 lookups/sec in the release benchmark), and real-time neural translation/romanization powered by Groq LLMs (`openai/gpt-oss-120b`). YouTube Music is temporarily disabled while its fetcher is rebuilt.
 
 Whether you are building a **karaoke player**, a **music streaming client**, an **accessibility read-along tool**, or a **music discovery platform**, Lyrica delivers consistent, structured JSON responses with zero mandatory configuration.
 
 ### ✨ Key Features
 
-- 🎵 **Multi-Provider Aggregation**: Aggregates from LRCLIB, Genius, Apple Music, YouTube Music, Lrcmux, NetEase, Megalobiz, and Musixmatch.
+- 🎵 **Multi-Provider Aggregation**: Zero-config fallback across LRCLIB, Lrcmux, Genius, NetEase, and Megalobiz. Apple Music and Musixmatch are loaded only when their tokens are configured. YouTube Music is temporarily disabled.
+- ✅ **Verified Results**: Every provider response is scored for title, artist, duration, content sanity, and LRC validity before it can be served or cached. Wrong-song results are rejected.
+- 🧠 **Canonical Caching**: One fetch per song, not one per flag combination. Raw lyrics are cached at their richest tier and derived down on demand; concurrent misses are coalesced with singleflight and confirmed absences use a short negative cache.
+- 🛡️ **Provider Safety**: Per-provider token buckets, circuit breakers, bulkheads, and live latency/error metrics at `/v2/health`.
+- 📦 **Lean v2 API**: `/v2/lyrics` returns compact `[start_ms, text]` lines (about 60% smaller than v1) with ETag/304 support. The v1 endpoint `/lyrics/` is unchanged.
 - ⏱️ **Multi-Granular Synchronization**:
   - **Line-Level (LRC)**: Sentence-by-sentence millisecond timing (`&timestamps=true`).
-  - **Word-Level (Karaoke)**: Per-word start and end timing for real-time highlighting (`&word=true`).
-  - **Syllable-Level**: Sub-word vocal syllable timing via Apple Music AMP API (`&syllabus=true`).
+  - **Word-Level (Karaoke)**: Per-word start and end timing for real-time highlighting (`&word=true`). Word-sync requests are routed only to Lrcmux and Apple Music.
+  - **Syllable-Level**: Sub-word vocal syllable timing via Apple Music AMP API (`&syllabus=true`). Syllable requests use Apple Music first, then Lrcmux.
 - 🤖 **AI Translation & Romanization**: Real-time lyrics translation and script transliteration via Groq LLMs.
-- ⚡ **89,000+ RPS Throughput**: Multi-tier cache architecture (L1 In-Memory LRU + L2 Redis + L3 Disk) ensures sub-millisecond latency on cache hits.
+- ⚡ **68,000+ L1 Lookups/sec**: Multi-tier cache architecture (L1 In-Memory LRU + L2 Redis + L3 Disk) ensures sub-millisecond latency on cache hits, as measured in the v2-beta-rollout release benchmark.
 - 📊 **Track Intelligence**: Integrated mood analysis, emotional polarity, and rich metadata (cover art, genre, release date).
 - 🛡️ **Production-Hardened**: Gunicorn `gevent` concurrency (2,000+ conns/worker), unprivileged Docker user, `tini` PID 1, and health checks.
 
@@ -114,6 +125,10 @@ curl "http://127.0.0.1:9999/lyrics/?artist=Coldplay&song=Yellow&timestamps=true"
 curl "http://127.0.0.1:9999/lyrics/?artist=Coldplay&song=Yellow&timestamps=true&word=true"
 ```
 
+Word requests are routed only to Lrcmux and Apple Music. Availability depends
+on the track; if neither has word timing, v1 returns the best line/plain
+result from those providers.
+
 ```json
 {
   "status": "success",
@@ -151,6 +166,27 @@ curl "http://127.0.0.1:9999/lyrics/?artist=Karan%20Aujla&song=Boyfriend&timestam
 curl "http://127.0.0.1:9999/suggestion?q=Bohemian%20Rhapsody&limit=3"
 ```
 
+### 6. Lean v2 Lyrics (recommended for new clients)
+```bash
+curl "http://127.0.0.1:9999/v2/lyrics?artist=Coldplay&song=Yellow&tier=line"
+```
+
+```json
+{
+  "v": 2,
+  "src": "lrclib",
+  "tier": "line",
+  "artist": "Coldplay",
+  "title": "Yellow",
+  "dur": 267000,
+  "lines": [[35660, "Look at the stars"], [38460, "Look how they shine for you"]]
+}
+```
+
+`tier` accepts `plain`, `line`, `word`, or `syllable`. Responses carry an
+`ETag`; send it back as `If-None-Match` for a bodyless `304`. See
+[the v2 API docs](docs/api/v2.md), [the v2-beta-rollout release notes](docs/release-notes/v2-beta-rollout.md), and `/v2/health` for provider state.
+
 ---
 
 ## 🏗️ Architecture Overview
@@ -165,7 +201,7 @@ graph LR
     Controller --> P2[Lrcmux]
     Controller --> P3[Genius]
     Controller --> P4[Apple Music]
-    Controller --> P5[YouTube / Others]
+    Controller --> P5[NetEase / Megalobiz]
     Controller --> LLM[Groq AI Processor]
     Controller --> SaveCache[Multi-Tier Cache Save]
     SaveCache --> Client
@@ -179,14 +215,16 @@ graph LR
 |:---:|---|---|---|---|
 | **1** | **Genius** | Plain | Complete Verses (Depth-Tracking) | None needed (Public Web Search fallback) or `GENIUS_TOKEN` |
 | **2** | **LRCLIB** | Timestamped + Plain | Line-Level | Free, no token required |
-| **3** | **YouTube Music** | Timestamped + Plain | Line-Level | Free (3-layer fallback) |
+| **3** | **YouTube Music** | — | — | Temporarily disabled (fetcher being rebuilt) |
 | **4** | **NetEase** | Timestamped | Line-Level | Free |
 | **5** | **Megalobiz** | Timestamped | Line-Level | Free |
-| **6** | **Musixmatch** | Timestamped | Line-Level | `MUSIXMATCH_TOKEN` (optional) |
+| **6** | **Musixmatch** | Timestamped | Line-Level | `MUSIXMATCH_TOKEN` (required to load) |
 | **7** | **Lrcmux** | Timestamped + Word-Level | Line & Word | Free via `api.lrcmux.dev` |
-| **8** | **Apple Music** | Timestamped + Word + Syllable | Line, Word & Syllable | `APPLE_MUSIC_DEVELOPER_TOKEN` |
+| **8** | **Apple Music** | Timestamped + Word + Syllable | Line, Word & Syllable | `APPLE_MUSIC_DEVELOPER_TOKEN` (required to load) |
 
-*Default Fallback Sequence:* `LRCLIB (2) → Lrcmux (7) → Genius (1) → YouTube (3) → NetEase (4) → Megalobiz (5) → Musixmatch (6) → Apple Music (8)`
+*Default Fallback Sequence:* `LRCLIB (2) → Lrcmux (7) → Genius (1) → NetEase (4) → Megalobiz (5) → Musixmatch (6) → Apple Music (8)`
+
+Providers that require a token are omitted from the sequence when the token is not configured. For `word=true` or `syllabus=true`, automatic routing is restricted to Lrcmux and Apple Music.
 
 ---
 
@@ -215,7 +253,7 @@ python Test/run_all_tests.py
 Results:
 - **Genius Parser Unit Tests**: Verified depth-tracking parsing without missing verses.
 - **Live Integration Tests**: Live requests against real Genius servers (`The Weeknd`, `Queen`).
-- **Performance Benchmark**: **89,182 req/s** on L1 cache, **4,276 req/s** on concurrent Flask routes.
+- **Performance Benchmark**: **68,624 req/s** on the L1 cache and **3,266 req/s** on concurrent Flask test-client routes. See the [release notes](docs/release-notes/v2-beta-rollout.md) for full matrices and benchmark caveats.
 
 ---
 

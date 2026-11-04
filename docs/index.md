@@ -8,9 +8,9 @@
 
 ## Welcome to Lyrica
 
-**Lyrica** is an open-source, production-grade Python/Flask REST API (v1.5.0) that aggregates song lyrics across multiple providers (LRCLIB, Genius, YouTube Music, Lrcmux, Apple Music, NetEase, Megalobiz, and Musixmatch).
+**Lyrica** is an open-source, production-grade Python/Flask REST API (**v2.0.0b1**, released as **v2-beta-rollout**) that aggregates song lyrics across multiple providers (LRCLIB, Lrcmux, Genius, NetEase, Megalobiz, plus token-gated Apple Music and Musixmatch). YouTube Music is temporarily disabled while its fetcher is rebuilt.
 
-It offers multi-level synchronization (line-level LRC, word-level karaoke sync, and syllable-level timing), Groq LLM-powered lyrics translation and romanization, audio metadata extraction, real-time Apple Music trending charts, and a multi-tier cache architecture capable of handling **89,000+ requests/second**.
+It offers multi-level synchronization (line-level LRC, word-level karaoke sync, and syllable-level timing), Groq LLM-powered lyrics translation and romanization, audio metadata extraction, real-time Apple Music trending charts, and a multi-tier cache architecture with a release benchmark of **68,624 L1 lookups/second** and sub-millisecond cache hits.
 
 ```mermaid
 graph LR
@@ -22,7 +22,7 @@ graph LR
     Controller --> S2[Lrcmux]
     Controller --> S3[Genius]
     Controller --> S4[Apple Music]
-    Controller --> S5[YouTube / Others]
+    Controller --> S5[NetEase / Megalobiz]
     Controller --> LLM[Groq LLM: Translate & Romanize]
     Controller --> SaveCache[Save to Multi-Tier Cache]
     SaveCache --> Client
@@ -32,11 +32,11 @@ graph LR
 
 ## Key Highlights
 
-- **8 Active Providers**: Intelligent fallback across LRCLIB, Lrcmux, Genius, Apple Music, YouTube Music, NetEase, Megalobiz, and Musixmatch.
+- **Multi-Provider Aggregation**: Zero-config fallback across LRCLIB, Lrcmux, Genius, NetEase, and Megalobiz. Apple Music and Musixmatch load only when their tokens are configured; YouTube Music is temporarily disabled.
 - **Granular Synchronization**:
     - **Line-level**: Standard LRC format timestamps.
-    - **Word-level**: Millisecond-accurate word timing for interactive karaoke applications (`&word=true`).
-    - **Syllable-level**: Sub-word syllable timing for high-fidelity vocal read-along (`&syllabus=true`).
+    - **Word-level**: Millisecond-accurate word timing for interactive karaoke applications (`&word=true`). Routed only to Lrcmux and Apple Music.
+    - **Syllable-level**: Sub-word syllable timing for high-fidelity vocal read-along (`&syllabus=true`). Apple Music first, then Lrcmux.
 - **Real-Time Translation**: Neural translation and Roman script transliteration via Groq LLM (`openai/gpt-oss-120b`).
 - **Blazing Performance**: L1 in-memory LRU cache + L2 Redis + L3 persistent disk cache. Sub-millisecond response on cache hits.
 - **Zero Required Setup**: Fully functional out of the box without mandatory third-party credentials.
@@ -56,6 +56,7 @@ graph LR
 | [**Deployment**](deployment/docker.md) | Production deployment across Docker, Render, Hugging Face, VPS, and cloud hosts |
 | [**Development**](development/testing.md) | Test suites, performance benchmarks, and contribution guidelines |
 | [**Troubleshooting**](troubleshooting/faq.md) | Diagnostics, common questions, cloud IP blocks, and solutions |
+| [**Release Notes**](release-notes/v2-beta-rollout.md) | v2-beta-rollout test results, performance matrices, and known limitations |
 
 ---
 
@@ -66,6 +67,8 @@ Request synchronized word-level lyrics in a single HTTP request:
 ```bash
 curl -s "http://127.0.0.1:9999/lyrics/?artist=Coldplay&song=Yellow&timestamps=true&word=true"
 ```
+
+Word and syllable requests are automatically routed to Lrcmux and Apple Music only.
 
 Response snippet:
 

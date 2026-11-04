@@ -1,8 +1,9 @@
-from flask import jsonify, request, render_template
+from flask import jsonify, request, render_template, Response, current_app
 from datetime import datetime, timezone
 import os
 import re
 import hmac
+import hashlib
 import asyncio
 import atexit
 import threading
@@ -13,10 +14,32 @@ from src.proxy_manager import get_proxy_manager
 from src.user_config import get_user_config, reload_user_config
 
 from src.logger import get_logger
-from src.cache import make_cache_key, load_from_cache, save_to_cache, clear_cache, cache_stats
+from src.cache import (
+    make_lyrics_cache_key,
+    make_view_cache_key,
+    load_raw,
+    save_raw,
+    load_view,
+    save_view,
+    clear_cache,
+    cache_stats,
+)
+from src.core import providers
+from src.core.negative_cache import negative_cache
+from src.core.singleflight import singleflight
+from src.core.tiers import (
+    TIERS,
+    derive_view,
+    detect_tier,
+    normalize_tier,
+    requested_tier,
+    tier_rank,
+    to_lean,
+)
 from src.fetch_controller import fetch_lyrics_controller
 from src.sentiment_analyzer import analyze_sentiment, analyze_word_frequency, extract_lyrics_text
 from src.metadata_extractor import enhance_lyrics_with_metadata, get_metadata_only
+from src.sources import ALL_FETCHERS
 from src.sources.jiosaavan_fetcher import search_jiosaavn, get_jiosaavn_stream
 from src.trending_analytics import TrendingAnalyticsEngine, Country
 from src import __version__
@@ -169,6 +192,174 @@ def run_async(coro, timeout=30):
     except (asyncio.TimeoutError, TimeoutError) as exc:
         logger.error("Async operation timed out after %ss", timeout)
         raise TimeoutError("Request timed out - operation took too long") from exc
+
+
+def _serialize_json(obj) -> str:
+    """Serialize with the app's orjson provider (fallback: stdlib json)."""
+    try:
+        return current_app.json.dumps(obj)
+    except Exception:
+        import json
+        return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+
+
+def _cached_response(body: str, *, status: int = 200, cache_label: str = "HIT") -> Response:
+    """Return a pre-serialized body with a strong ETag and 304 support."""
+    etag = '"' + hashlib.sha256(body.encode("utf-8")).hexdigest()[:32] + '"'
+    inm = request.headers.get("If-None-Match", "")
+    candidates = {part.strip() for part in inm.split(",") if part.strip()}
+    if "*" in candidates or etag in candidates:
+        return Response(status=304, headers={"ETag": etag, "X-Cache": cache_label})
+    response = Response(body, status=status, mimetype="application/json")
+    response.headers["ETag"] = etag
+    response.headers["X-Cache"] = cache_label
+    return response
+
+
+def _has_lyrics_content(result: dict | None) -> bool:
+    if not isinstance(result, dict):
+        return False
+    data = result.get("data", result)
+    if not isinstance(data, dict):
+        return False
+    if data.get("lyrics") or data.get("plain_lyrics") or data.get("lyrics_text"):
+        return True
+    return bool(data.get("timed_lyrics"))
+
+
+def _get_raw_lyrics(
+    artist: str,
+    song: str,
+    *,
+    timestamps: bool,
+    pass_param: bool,
+    sequence,
+    fast_mode: bool,
+    fast_timeout: int,
+    word_level: bool,
+    syllabus: bool,
+):
+    """Resolve the richest-tier raw entry with negative caching + singleflight.
+
+    Returns ``(result, tier, raw_key, meta)``. ``result`` is ``None`` when no
+    provider had the song; ``meta["outcome"]`` distinguishes a clean absence
+    from an error. Raises ``TimeoutError`` / ``Exception`` so the route can map
+    them to 504/500 exactly as before.
+    """
+    raw_key = make_lyrics_cache_key(artist, song, sequence, pass_param)
+    wanted = requested_tier(timestamps, word_level, syllabus)
+
+    cached = load_raw(raw_key)
+    if cached and tier_rank(cached[1]) >= tier_rank(wanted):
+        return cached[0], cached[1], raw_key, {"outcome": "hit"}
+
+    lower_tier_fallback = cached
+    upgrade_marker = f"{raw_key}:tier:{wanted}"
+
+    # A lower-tier entry already exists and an upgrade was attempted recently:
+    # serve what we have instead of hammering providers on every request.
+    if cached and negative_cache.get(upgrade_marker):
+        return cached[0], cached[1], raw_key, {"outcome": "hit"}
+
+    if negative_cache.get(raw_key):
+        return None, None, raw_key, {"outcome": "not_found"}
+
+    with singleflight.run(raw_key, timeout=70) as leader:
+        if not leader:
+            # The leader finished while we waited: re-check the shared cache
+            # and the negative cache so duplicate requests get the same answer.
+            cached = load_raw(raw_key)
+            if cached:
+                return cached[0], cached[1], raw_key, {"outcome": "hit"}
+            if negative_cache.get(raw_key):
+                return None, None, raw_key, {"outcome": "not_found"}
+            return None, None, raw_key, {"outcome": "incomplete"}
+
+        # Re-check inside the leader slot: another worker may have filled it
+        # between the first lookup and acquiring the singleflight key.
+        cached = load_raw(raw_key)
+        if cached and tier_rank(cached[1]) >= tier_rank(wanted):
+            return cached[0], cached[1], raw_key, {"outcome": "hit"}
+        if not cached and negative_cache.get(raw_key):
+            return None, None, raw_key, {"outcome": "not_found"}
+
+        meta: dict = {}
+        result = run_async(
+            fetch_lyrics_controller(
+                artist,
+                song,
+                timestamps=timestamps,
+                pass_param=pass_param,
+                sequence=sequence,
+                fast_mode=fast_mode,
+                fast_timeout=fast_timeout,
+                word_level=word_level,
+                syllabus=syllabus,
+                meta=meta,
+            ),
+            timeout=60,
+        )
+
+        if result is not None and not isinstance(result, dict):
+            meta["outcome"] = "invalid"
+            return None, None, raw_key, meta
+
+        if isinstance(result, dict) and result.get("status") == "success" and _has_lyrics_content(result):
+            detected = detect_tier(result)
+            # Never let a lower-tier upgrade attempt overwrite a richer entry.
+            # This can happen when a word request falls back to a plain result
+            # from a provider that is not the one that supplied the line entry.
+            existing = load_raw(raw_key)
+            if existing and tier_rank(existing[1]) >= tier_rank(detected):
+                result, detected = existing[0], existing[1]
+            else:
+                try:
+                    save_raw(raw_key, result, detected)
+                except Exception as exc:
+                    logger.warning("Raw cache save failed for %r - %r: %s", artist, song, exc)
+            if tier_rank(detected) < tier_rank(wanted):
+                negative_cache.set(upgrade_marker, "tier_unavailable")
+            return result, detected, raw_key, meta
+
+        if meta.get("outcome") == "not_found":
+            negative_cache.set(raw_key, "not_found")
+        elif meta.get("outcome") == "error":
+            logger.warning(
+                "All providers errored for %r - %r (attempts=%s, errors=%s)",
+                artist,
+                song,
+                meta.get("attempts"),
+                len(meta.get("errors", [])),
+            )
+
+        if lower_tier_fallback:
+            # Remember that this tier could not be upgraded so the next request
+            # for it serves the lower tier without another upstream call.
+            negative_cache.set(upgrade_marker, "tier_unavailable")
+            return lower_tier_fallback[0], lower_tier_fallback[1], raw_key, meta
+        return None, None, raw_key, meta
+
+
+def _run_ai_lines(data: dict, translate: bool, romanize: bool, language: str):
+    """Run Groq on the lyric lines and return aligned (translated, romanized)."""
+    timed = data.get("timed_lyrics") or []
+    if timed:
+        lines = [str(entry.get("text", "")) for entry in timed if isinstance(entry, dict)]
+    else:
+        raw = data.get("lyrics") or data.get("plain_lyrics") or ""
+        lines = str(raw).split("\n") if raw else []
+    if not lines:
+        return None, None
+    groq_result = run_async(
+        process_lyrics(
+            lyrics_lines=lines,
+            target_language=language,
+            translate=translate,
+            romanize=romanize,
+        ),
+        timeout=120,
+    )
+    return groq_result.get("translated"), groq_result.get("romanized")
 
 
 def register_routes(app):
@@ -484,35 +675,41 @@ def register_routes(app):
         except Exception as e:
             logger.warning(f"Failed to record user query: {str(e)}")
 
-        # 1. Check Cache First
-        cache_key = make_cache_key(
-            artist, song, timestamps, sequence, fast_mode,
-            analyze_mood, include_metadata,
-            translate=do_translate, romanize=do_romanize, language=target_language,
+        # 1. Rendered-view cache. The body is stored pre-serialized so a hit
+        #    skips tier derivation and JSON encoding entirely.
+        view_key = make_view_cache_key(
+            artist,
+            song,
+            timestamps=timestamps,
+            sequence=sequence,
+            mood=analyze_mood,
+            metadata=include_metadata,
+            translate=do_translate,
+            romanize=do_romanize,
+            language=target_language,
             word_level=word_level,
             syllabus=syllabus,
+            pass_param=pass_param,
         )
-        cached = load_from_cache(cache_key)
+        cached_view = load_view(view_key)
+        if cached_view:
+            _, cached_body = cached_view
+            logger.info("View cache hit for %s - %s", artist, song)
+            return _cached_response(cached_body)
 
-        if cached:
-            logger.info(f"Cache hit for {artist} - {song}")
-            return jsonify(cached)
-
-        # 2. Fetch Fresh Data
+        # 2. Raw lyrics entry, shared by every flag combination, with
+        #    singleflight coalescing and a short negative cache.
         try:
-            result = run_async(
-                fetch_lyrics_controller(
-                    artist,
-                    song,
-                    timestamps=timestamps,
-                    pass_param=pass_param,
-                    sequence=sequence,
-                    fast_mode=fast_mode,
-                    fast_timeout=_fast_timeout,
-                    word_level=word_level,
-                    syllabus=syllabus,
-                ),
-                timeout=60,
+            raw_result, _raw_tier, _raw_key, _raw_meta = _get_raw_lyrics(
+                artist,
+                song,
+                timestamps=timestamps,
+                pass_param=pass_param,
+                sequence=sequence,
+                fast_mode=fast_mode,
+                fast_timeout=_fast_timeout,
+                word_level=word_level,
+                syllabus=syllabus,
             )
         except TimeoutError:
             logger.error(f"Timeout fetching lyrics for {artist} - {song}")
@@ -541,18 +738,31 @@ def register_routes(app):
                 500,
             )
 
-        if not isinstance(result, dict):
-            logger.error(f"Invalid result type from fetch_lyrics_controller: {type(result)}")
-            return (
-                jsonify({
-                    "status": "error",
-                    "error": {
-                        "message": "Invalid response from lyrics fetcher",
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    },
-                }),
-                500,
-            )
+        if raw_result is None:
+            if _raw_meta.get("outcome") == "invalid":
+                return (
+                    jsonify({
+                        "status": "error",
+                        "error": {
+                            "message": "Invalid response from lyrics fetcher",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        },
+                    }),
+                    500,
+                )
+            logger.info("No lyrics found for %s - %s", artist, song)
+            return jsonify({
+                "status": "error",
+                "error": {
+                    "message": "No lyrics found",
+                    "details": "All enabled fetchers returned no result",
+                },
+            })
+
+        result = derive_view(
+            raw_result,
+            requested_tier(timestamps, word_level, syllabus),
+        )
 
         # 3. Analyze mood if requested
         if analyze_mood and result.get("status") == "success":
@@ -690,21 +900,155 @@ def register_routes(app):
                         if not _IS_PRODUCTION:
                             result["translation_error"] += f": {e}"
 
-        # 6. Cache if successful
+        # 6. Cache the rendered view (including mood/metadata/translation).
         if result.get("status") == "success":
-            data = result.get("data", {})
-            if data.get("lyrics") or data.get("plain_lyrics") or data.get("lyrics_text"):
-                try:
-                    save_to_cache(cache_key, result)
-                    logger.info(f"Result cached for {artist} - {song}")
-                except Exception as e:
-                    logger.warning(f"Cache save failed: {str(e)}")
-            else:
-                logger.warning(
-                    f"Fetch successful but no lyrics content found for {artist} - {song}. Skipping cache."
-                )
+            try:
+                body = _serialize_json(result)
+                save_view(view_key, result, body)
+                logger.info(f"Result cached for {artist} - {song}")
+                return _cached_response(body, cache_label="MISS")
+            except Exception as e:
+                logger.warning(f"Cache save failed: {str(e)}")
 
         return jsonify(result)
+
+    @app.route("/v2/lyrics", methods=["GET"])
+    def v2_lyrics():
+        """Lean v2 lyrics endpoint with ETag/304 and tier derivation."""
+        raw_artist = request.args.get("artist", "")
+        raw_song = request.args.get("song", "")
+        artist = _sanitize_text(raw_artist)
+        song = _sanitize_text(raw_song)
+        if not artist or not song:
+            return jsonify({"err": "missing_artist_or_song"}), 400
+
+        tier = normalize_tier(request.args.get("tier", "line"))
+        if tier is None:
+            return jsonify({"err": "bad_tier", "allowed": list(TIERS)}), 400
+
+        allow_lower = request.args.get("allow_lower", "true").lower() != "false"
+        lite = request.args.get("lite", "false").lower() == "true"
+        fields_raw = request.args.get("fields", "")
+        fields = {part.strip() for part in fields_raw.split(",") if part.strip()} or None
+        do_translate = request.args.get("translate", "false").lower() == "true"
+        do_romanize = request.args.get("romanize", "false").lower() == "true"
+        target_language = _sanitize_text(request.args.get("lang", "en"), 40).lower() or "en"
+        fast_mode = request.args.get("fast", "false").lower() == "true"
+
+        timestamps = tier != "plain"
+        word_level = tier in ("word", "syllable")
+        syllabus = tier == "syllable"
+
+        view_key = make_view_cache_key(
+            artist,
+            song,
+            timestamps=timestamps,
+            mood=False,
+            metadata=False,
+            translate=do_translate,
+            romanize=do_romanize,
+            language=target_language,
+            word_level=word_level,
+            syllabus=syllabus,
+            extra={
+                "v2": 1,
+                "tier": tier,
+                "lite": lite,
+                "fields": sorted(fields) if fields else [],
+            },
+        )
+        cached_view = load_view(view_key)
+        if cached_view:
+            return _cached_response(cached_view[1])
+
+        try:
+            raw_result, _raw_tier, _raw_key, raw_meta = _get_raw_lyrics(
+                artist,
+                song,
+                timestamps=timestamps,
+                pass_param=False,
+                sequence=None,
+                fast_mode=fast_mode,
+                fast_timeout=20,
+                word_level=word_level,
+                syllabus=syllabus,
+            )
+        except TimeoutError:
+            return jsonify({"err": "timeout"}), 504
+        except Exception as exc:
+            logger.error("v2 fetch failed for %r - %r: %s", artist, song, exc)
+            return jsonify({"err": "internal"}), 500
+
+        if raw_result is None:
+            if raw_meta.get("outcome") == "not_found":
+                return jsonify({"err": "not_found"}), 404
+            return jsonify({"err": "upstream_unavailable"}), 503
+
+        actual = detect_tier(raw_result)
+        if tier_rank(actual) < tier_rank(tier) and not allow_lower:
+            return jsonify({"err": "tier_unavailable", "tier": actual}), 404
+
+        derived = derive_view(raw_result, tier)
+        effective_tier = tier if tier_rank(tier) <= tier_rank(actual) else actual
+
+        translated = romanized = None
+        if do_translate or do_romanize:
+            if not get_key_manager().has_keys:
+                return jsonify({"err": "ai_unavailable"}), 503
+            try:
+                translated, romanized = _run_ai_lines(
+                    derived.get("data", derived),
+                    do_translate,
+                    do_romanize,
+                    target_language,
+                )
+            except Exception as exc:
+                logger.error("v2 AI processing failed for %r - %r: %s", artist, song, exc)
+                return jsonify({"err": "ai_failed"}), 502
+
+        payload = to_lean(derived, effective_tier, lite=lite, fields=fields)
+        if translated:
+            payload["tr"] = translated
+        if romanized:
+            payload["rom"] = romanized
+
+        body = _serialize_json(payload)
+        try:
+            save_view(view_key, payload, body)
+        except Exception as exc:
+            logger.warning("v2 view cache save failed: %s", exc)
+        return _cached_response(body, cache_label="MISS")
+
+    @app.route("/v2/capabilities", methods=["GET"])
+    def v2_capabilities():
+        """Describe what this instance supports."""
+        try:
+            ai_available = get_key_manager().has_keys
+        except Exception:
+            ai_available = False
+        return jsonify({
+            "v": 2,
+            "tiers": list(TIERS),
+            "providers": sorted(ALL_FETCHERS.keys()),
+            "ai": ai_available,
+            "byok": False,
+            "compression": os.getenv("LYRICA_COMPRESS", "false").lower() in ("1", "true", "yes"),
+        })
+
+    @app.route("/v2/health", methods=["GET"])
+    def v2_health():
+        """Provider breaker/quota state, queue stats, and cache stats."""
+        stats = cache_stats()
+        stats.pop("cache_dir", None)
+        return jsonify({
+            "v": 2,
+            "status": "ok",
+            "providers": providers.snapshot(),
+            "singleflight": singleflight.stats(),
+            "negative_cache": negative_cache.stats(),
+            "cache": stats,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
 
     @app.route("/metadata/", methods=["GET"])
     def metadata():

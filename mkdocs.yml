@@ -59,6 +59,7 @@ nav:
   - API Reference:
       - Overview & Auth: api/overview.md
       - Lyrics API: api/lyrics.md
+      - v2 Lean API: api/v2.md
       - Metadata & Trending: api/metadata-trending.md
       - Administration: api/administration.md
   - Architecture:
@@ -81,3 +82,5 @@ nav:
       - Contributing: development/contributing.md
   - Troubleshooting:
       - FAQ & Diagnostics: troubleshooting/faq.md
+  - Release Notes:
+      - v2-beta-rollout: release-notes/v2-beta-rollout.md

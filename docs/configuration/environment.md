@@ -11,6 +11,7 @@ Lyrica uses environment variables for sensitive tokens, infrastructure endpoints
 | Variable | Required | Default | Description |
 |---|:---:|:---:|---|
 | `ADMIN_KEY` | No | — | Secret token required to access administrative endpoints (`/cache/clear`, `/v2/proxy/*`, `/config/*`). |
+| `LYRICA_API_KEYS` | No | — | Comma-separated trusted client keys. A matching `X-API-Key` gets its own rate-limit bucket (stored as a hash); unknown keys are ignored so they cannot bypass the IP limit. |
 | `LYRICA_ENV` | No | `development` | Set to `production` to enable strict security headers (CSP, HSTS), 60 RPM rate limits, and larger L1 memory caches. |
 | `PORT` | No | `9999` (local) / `7860` (Docker) | Port on which the HTTP server listens. |
 | `LOG_LEVEL` | No | `INFO` | Logging severity (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
@@ -26,10 +27,10 @@ Lyrica uses environment variables for sensitive tokens, infrastructure endpoints
 | Variable | Required | Default | Description |
 |---|:---:|:---:|---|
 | `GENIUS_TOKEN` | No | — | Genius client access token. If omitted, Lyrica uses the public unauthenticated search fallback. |
-| `APPLE_MUSIC_DEVELOPER_TOKEN` | No | — | Apple Music Developer JWT token. Required for Apple Music source (ID 8) and syllable sync. |
+| `APPLE_MUSIC_DEVELOPER_TOKEN` | No | — | Apple Music Developer JWT token. Required to load Apple Music (ID 8) and enable syllable/word sync. |
 | `APPLE_MUSIC_USER_TOKEN` | No | — | Optional Apple Music user subscription token. |
 | `APPLE_STOREFRONT` | No | `us` | Default storefront country code for Apple Music. |
-| `MUSIXMATCH_TOKEN` | No | — | Musixmatch client token. (Omit if using tokenless Lrcmux instead). |
+| `MUSIXMATCH_TOKEN` | No | — | Musixmatch client token. Required to load Musixmatch (ID 6); the fetcher is not instantiated when unset. Use Lrcmux for tokenless Musixmatch data. |
 
 ---
 
@@ -54,6 +55,15 @@ Lyrica uses environment variables for sensitive tokens, infrastructure endpoints
 | `METADATA_CACHE_TTL` | No | `3600` | TTL in seconds for the in-process metadata cache. |
 | `METADATA_CACHE_MAX` | No | `2000` | Maximum entries retained in the metadata cache. |
 | `STATIC_CACHE_SECONDS` | No | `3600` | Browser cache lifetime for static assets. |
+| `LYRICA_COMPRESS` | No | `false` | Enable `flask-compress` (gzip/brotli). Off by default; prefer compressing at the reverse proxy. |
+| `LYRICA_NEGATIVE_TTL` | No | `3600` | Seconds to remember a confirmed "not found". Provider errors and rejected results are never cached as absence. |
+| `LYRICA_NEGATIVE_MAX` | No | `5000` | Maximum in-process negative-cache entries. |
+| `LYRICA_BREAKER_THRESHOLD` | No | `5` | Consecutive transport failures before a provider circuit breaker opens. |
+| `LYRICA_BREAKER_COOLDOWN` | No | `30` | Seconds before a half-open probe is allowed. |
+| `LYRICA_BREAKER_GOOD_PROBES` | No | `2` | Successful probes required before closing a breaker. |
+| `LYRICA_PROVIDER_CONCURRENCY` | No | `8` | Maximum in-flight calls per provider per event loop. |
+| `LYRICA_DISABLED_PROVIDERS` | No | — | Comma-separated provider names to disable entirely. |
+| `LYRICA_PROVIDER_<NAME>_RPM` | No | per-provider | Overrides the provider's requests-per-minute quota (e.g. `LYRICA_PROVIDER_LRCLIB_RPM=30`). |
 
 ---
 
@@ -62,7 +72,7 @@ Lyrica uses environment variables for sensitive tokens, infrastructure endpoints
 | Variable | Required | Default | Description |
 |---|:---:|:---:|---|
 | `PROXY_URL` | No | — | Global proxy applied to ALL providers. Supports comma-separated list of HTTP/HTTPS/SOCKS5 proxies for round-robin pooling. |
-| `YT_PROXY_URL` | No | — | Dedicated proxy applied exclusively to YouTube requests. |
-| `YT_COOKIES_PATH` | No | — | Absolute filesystem path to `cookies.txt` for YouTube authentication. |
+| `YT_PROXY_URL` | No | — | Reserved for the rebuilt YouTube Music fetcher. YouTube is temporarily disabled. |
+| `YT_COOKIES_PATH` | No | — | Reserved for the rebuilt YouTube Music fetcher. YouTube is temporarily disabled. |
 | `LRCLIB_API_URL` | No | `https://lrclib.net/api/get` | Override base URL for LRCLIB API. |
 | `LRCMUX_API_URL` | No | `https://api.lrcmux.dev` | Override base URL for Lrcmux API. |

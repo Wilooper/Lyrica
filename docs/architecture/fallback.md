@@ -10,20 +10,19 @@ When a client requests granular timing (such as syllable-level or word-level syn
 
 ```mermaid
 graph TD
-    Request["Request: timestamps=true & syllabus=true"] --> Phase1{"Phase 1: Syllable Phase<br/>(Apple Music)"}
+    Request["Request: timestamps=true & word/syllabus"] --> Phase1{"Phase 1: Syllable Phase<br/>(Apple Music)"}
 
     Phase1 -- Found --> Done1["Return Syllable-Level Sync<br/>(sync_level: 'syllable')"]
     Phase1 -- Not Found --> Phase2{"Phase 2: Word Phase<br/>(Lrcmux & Apple Music)"}
 
     Phase2 -- Found --> Done2["Return Word-Level Sync<br/>(sync_level: 'word')"]
-    Phase2 -- Not Found --> Phase3{"Phase 3: Line Phase<br/>(LRCLIB, YouTube, NetEase, Megalobiz, Musixmatch)"}
+    Phase2 -- Not Found --> Lower{"Lower tier allowed?"}
 
-    Phase3 -- Found --> Done3["Return Line-Level Sync<br/>(sync_level: 'line')"]
-    Phase3 -- Not Found --> Phase4{"Phase 4: Plain Lyrics Phase<br/>(Genius & All Other Providers)"}
-
-    Phase4 -- Found --> Done4["Return Plain Lyrics<br/>(hasTimestamps: false)"]
-    Phase4 -- Not Found --> Err["404 Not Found<br/>(No lyrics found across all providers)"]
+    Lower -- Yes --> Done3["Return best Lrcmux/Apple result<br/>or a richer cached entry"]
+    Lower -- No --> Err["404 tier_unavailable"]
 ```
+
+Normal `timestamps=true` requests use the line phase (LRCLIB, Lrcmux, NetEase, Megalobiz, and Musixmatch when configured). If no synchronized lines exist, the controller returns the best plain-text result from the same chain. Word and syllable requests do **not** fan out to line-only providers.
 
 ---
 
@@ -35,18 +34,18 @@ graph TD
 - **Degradation**: If Apple Music does not have syllable-level timing or `APPLE_MUSIC_DEVELOPER_TOKEN` is unset, automatically degrades to Phase 2.
 
 ### Phase 2: Word Phase (`&word=true`)
-- **Sources**: Lrcmux (ID 7) and Apple Music (ID 8).
-- **Condition**: Triggers when `timestamps=true` and `word=true`.
-- **Degradation**: If no word-level timestamps are found on Lrcmux or Apple Music, degrades to Phase 3.
+- **Sources**: Lrcmux (ID 7) and Apple Music (ID 8) only.
+- **Condition**: Triggers when `timestamps=true` and `word=true` or `syllabus=true`.
+- **Degradation**: If neither provider returns the requested tier, Lyrica returns the best lower-tier result already obtained from Lrcmux/Apple Music (or a richer cached entry) when lower tiers are allowed. It does not query line-only providers. With `allow_lower=false` (v2), the response is `404 tier_unavailable`.
 
-### Phase 3: Line Phase (`&timestamps=true`)
-- **Sources**: LRCLIB (ID 2), Lrcmux (ID 7), YouTube Music (ID 3), NetEase (ID 4), Megalobiz (ID 5), Musixmatch (ID 6).
-- **Condition**: Triggers when `timestamps=true`.
-- **Degradation**: If no synchronized LRC lines exist anywhere, degrades to Phase 4.
+### Phase 3: Line Phase (`&timestamps=true`, normal requests)
+- **Sources**: LRCLIB (ID 2), Lrcmux (ID 7), NetEase (ID 4), Megalobiz (ID 5), and Musixmatch (ID 6, when configured).
+- **Condition**: Triggers for ordinary `timestamps=true` requests, not automatic word/syllabus requests.
+- **Degradation**: If no synchronized LRC lines exist anywhere, the controller returns the best plain-text result from the same chain.
 
 ### Phase 4: Plain Lyrics Phase
-- **Sources**: LRCLIB, Genius (ID 1), YouTube Music, NetEase, Megalobiz, Musixmatch.
-- Queries all active plain text lyrics sources.
+- **Sources**: LRCLIB, Genius (ID 1), NetEase, Megalobiz, and Musixmatch (when configured).
+- YouTube Music is temporarily disabled and is not queried.
 
 ---
 

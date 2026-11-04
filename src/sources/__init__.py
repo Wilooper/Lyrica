@@ -8,24 +8,23 @@ internal clients are lazy too) so a missing optional dependency like
 lyricsgenius or ytmusicapi won't crash the whole server — it will just
 make that fetcher silently unavailable.
 
-Source status (as of 2026-07-26):
+Source status (as of 2026-11-03):
   ACTIVE:
-    genius       — requires GENIUS_TOKEN env var (optional)
+    genius       — optional GENIUS_TOKEN; falls back to public search
     lrclib       — free, synced + plain, very reliable
-    youtube      — 3-layer (ytmusicapi [auth] -> transcript-api -> yt-dlp)
-                    auto-detects headers_auth.json / cookies.txt for auth
-                    all layers route through Webshare rotating proxy
     netease      — via syncedlyrics; synced LRC, large catalog
     megalobiz    — via syncedlyrics; synced LRC, user-contributed
-    musixmatch   — via syncedlyrics; optional MUSIXMATCH_TOKEN env var
+    musixmatch   — loaded only when MUSIXMATCH_TOKEN is set
     lrcmux       — Musixmatch via api.lrcmux.dev; line & word-level sync, no token
     apple_music  — requires APPLE_MUSIC_DEVELOPER_TOKEN (syllable/word/line sync)
 
-  DISABLED (dead — kept for reference, not loaded):
-    simpmusic   — removed (api-lyrics.simpmusic.org is unreliable)
-    lyricsovh   — no results / unreliable
-    chartlyrics — XML API dead
-    lyricsfreek — DNS failure (domain dead)
+  DISABLED (not loaded):
+    youtube      — temporarily disabled; fetcher is being rebuilt because the
+                    current implementation adds overhead without reliable output
+    simpmusic    — removed (api-lyrics.simpmusic.org is unreliable)
+    lyricsovh    — no results / unreliable
+    chartlyrics  — XML API dead
+    lyricsfreek  — DNS failure (domain dead)
 """
 import os
 from src.logger import get_logger
@@ -46,11 +45,23 @@ def _try_import(name: str, module: str, cls: str):
 # ── Active fetchers ──────────────────────────────────────────────────────────
 _try_import("genius",     "src.sources.genius_fetcher",      "GeniusFetcher")
 _try_import("lrclib",     "src.sources.lrclib_fetcher",      "LRCLIBFetcher")
-_try_import("youtube",    "src.sources.youtube_fetcher",     "YoutubeFetcher")
 _try_import("netease",    "src.sources.netease_fetcher",     "NetEaseFetcher")
 _try_import("megalobiz",  "src.sources.megalobiz_fetcher",   "MegalobizFetcher")
-_try_import("musixmatch", "src.sources.musixmatch_fetcher",  "MusixmatchFetcher")
 _try_import("lrcmux",     "src.sources.lrcmux_fetcher",      "LrcmuxFetcher")
+
+# ── Musixmatch (requires a token) ────────────────────────────────────────────
+# The unauthenticated endpoint returns 401, so do not even instantiate the
+# fetcher unless the operator supplied MUSIXMATCH_TOKEN.
+if os.getenv("MUSIXMATCH_TOKEN"):
+    _try_import("musixmatch", "src.sources.musixmatch_fetcher", "MusixmatchFetcher")
+else:
+    logger.info("Musixmatch fetcher skipped (set MUSIXMATCH_TOKEN to enable)")
+
+# ── YouTube Music (temporarily disabled) ─────────────────────────────────────
+# The current 3-layer implementation adds latency without reliable output.
+# It is being rebuilt; keep the module importable for the rewrite but do not
+# register it in ALL_FETCHERS.
+# _try_import("youtube", "src.sources.youtube_fetcher", "YoutubeFetcher")
 
 # ── Apple Music (requires developer token) ───────────────────────────────────
 # Only loaded when APPLE_MUSIC_DEVELOPER_TOKEN or DEVELOPER_TOKEN is set.

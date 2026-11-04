@@ -74,37 +74,75 @@ def build_result(
 
 
 # --------------------------------------------------------------------------- #
-# Shared LRC parser — used by LRCLIB and SimpMusic
+# Shared LRC parser — used by LRCLIB, NetEase, Megalobiz, Musixmatch, SimpMusic
 # --------------------------------------------------------------------------- #
-_LRC_RE = re.compile(r"\[(\d{2}:\d{2}\.?\d{0,3})\](.*)")
+# Matches one timestamp tag: [mm:ss], [mm:ss.xxx], [mm:ss:xx], [hh:mm:ss.xxx]
+_LRC_TAG_RE = re.compile(r"\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]")
+_LRC_OFFSET_RE = re.compile(r"\[offset:\s*([+-]?\d+)\]", re.IGNORECASE)
+_LRC_META_RE = re.compile(r"^\[(?:ar|ti|al|by|length|re|ve|offset):.*\]$", re.IGNORECASE)
+
+
+def _tag_to_ms(minutes: str, seconds: str, fraction: str | None) -> int | None:
+    try:
+        mins = int(minutes)
+        secs = int(seconds)
+    except ValueError:
+        return None
+    if secs > 59:
+        return None
+    ms = mins * 60_000 + secs * 1_000
+    if fraction:
+        ms += int(fraction.ljust(3, "0")[:3])
+    return ms
+
 
 def parse_lrc(lrc_text: str, total_duration_ms: int | None = None) -> list:
-    """Parse LRC-format timestamped lyrics into a list of timed line dicts."""
-    lines = lrc_text.splitlines()
-    parsed = []
-    for line in lines:
-        m = _LRC_RE.match(line)
-        if not m:
+    """Parse LRC-format timestamped lyrics into timed line dicts.
+
+    Handles multiple timestamps on one line (``[00:10.00][01:20.00] chorus``),
+    metadata tags, and ``[offset:...]``. Output is sorted by start time so the
+    verifier's monotonicity check is meaningful.
+    """
+    if not lrc_text:
+        return []
+
+    offset_match = _LRC_OFFSET_RE.search(lrc_text)
+    offset_ms = int(offset_match.group(1)) if offset_match else 0
+
+    parsed: list[dict] = []
+    seen: set[tuple[int, str]] = set()
+
+    for raw_line in lrc_text.splitlines():
+        line = raw_line.strip()
+        if not line or _LRC_META_RE.match(line):
             continue
-        time_str, text = m.group(1), m.group(2).strip()
-        time_str = time_str.replace("..", ".")
-        try:
-            mins, secs = time_str.split(":")
-            start_ms = int((int(mins) * 60 + float(secs)) * 1000)
-        except ValueError:
+        tags = list(_LRC_TAG_RE.finditer(line))
+        if not tags:
             continue
-        if text:
+        text = _LRC_TAG_RE.sub("", line).strip()
+        if not text:
+            continue
+        for tag in tags:
+            start_ms = _tag_to_ms(tag.group(1), tag.group(2), tag.group(3))
+            if start_ms is None:
+                continue
+            start_ms = max(0, start_ms + offset_ms)
+            key = (start_ms, text)
+            if key in seen:
+                continue
+            seen.add(key)
             parsed.append({"text": text, "start_time": start_ms, "end_time": None})
 
-    # Fill end_times from next line's start
+    parsed.sort(key=lambda entry: entry["start_time"])
+
+    # Fill end_times from the next line's start (never a zero-length span).
     for i, entry in enumerate(parsed):
-        if i + 1 < len(parsed):
+        if i + 1 < len(parsed) and parsed[i + 1]["start_time"] > entry["start_time"]:
             entry["end_time"] = parsed[i + 1]["start_time"]
+        elif total_duration_ms and total_duration_ms > entry["start_time"]:
+            entry["end_time"] = total_duration_ms
         else:
-            entry["end_time"] = (
-                total_duration_ms if total_duration_ms
-                else entry["start_time"] + 4000
-            )
+            entry["end_time"] = entry["start_time"] + 4000
         entry["id"] = f"lrc_{i}"
 
     return parsed

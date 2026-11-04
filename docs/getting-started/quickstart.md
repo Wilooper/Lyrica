@@ -30,7 +30,7 @@ Expected response:
 ```json
 {
   "status": "healthy",
-  "version": "1.5.0",
+  "version": "2.0.0b1",
   "service": "Lyrica"
 }
 ```
@@ -101,7 +101,7 @@ Add `&word=true` (requires `&timestamps=true`):
 curl -s "http://127.0.0.1:9999/lyrics/?artist=Coldplay&song=Yellow&timestamps=true&word=true"
 ```
 
-Each line will include a `words` array with individual start/end millisecond offsets.
+Each line will include a `words` array with individual start/end millisecond offsets. Word requests are routed only to Lrcmux and Apple Music; if neither has word timing for the track, Lyrica returns the best lower-tier result from those providers.
 
 ---
 

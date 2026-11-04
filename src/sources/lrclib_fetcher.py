@@ -3,128 +3,163 @@ src/sources/lrclib_fetcher.py
 
 Fetches synced or plain lyrics from LRCLIB (https://lrclib.net).
 
-Migrated from `requests` (blocking) to `httpx.AsyncClient` for full async
-compatibility with the event loop — no more thread-pool overhead or potential
-event-loop blocking under high concurrency.
-
-Retry logic: LRCLIB's free server occasionally rejects keep-alive connections.
-We handle this with httpx's built-in retry transport.
+The hot path is a single ``/api/get`` request against the shared keep-alive
+connection pool. ``/api/search`` is only used as a fallback, and its results
+are scored so a wrong first hit is never selected blindly.
 """
 
-import re
 from datetime import datetime, timezone
 
 import httpx
 
 from src.config import LRCLIB_API_URL
+from src.core.verifier import score_candidate
 from src.logger import get_logger
-from .base_fetcher import BaseFetcher, build_result, parse_lrc
+from .base_fetcher import BaseFetcher, get_http_client, parse_lrc
 
 logger = get_logger("lrclib_fetcher")
 
-_LRCLIB_SEARCH = "https://lrclib.net/api/search"
+_LRCLIB_SEARCH = LRCLIB_API_URL.rsplit("/", 1)[0] + "/search" if LRCLIB_API_URL.endswith("/get") else "https://lrclib.net/api/search"
 _UA = "Lyrica/1.0 (https://github.com/Wilooper/Lyrica)"
+_MIN_CANDIDATE_SCORE = 0.45
 
 
 class LRCLIBFetcher(BaseFetcher):
     source_name = "lrclib"
 
     async def fetch(self, artist: str, song: str, timestamps: bool = True, proxy: str | None = None):
-        """
-        Fetch lyrics from LRCLIB.
+        """Fetch lyrics from LRCLIB.
 
-        Args:
-            artist:     Artist name
-            song:       Song title
-            timestamps: If True, prefer synced (LRC) lyrics
-            proxy:      Optional proxy URL (http/https/socks5)
+        ``proxy`` is only used when explicitly supplied; the default path
+        reuses the process-wide pooled client.
         """
-        # Build a fresh async client per call — keeps proxy/retry logic clean
-        transport = httpx.AsyncHTTPTransport(retries=3)
-        client_kwargs = dict(
-            transport=transport,
-            timeout=httpx.Timeout(connect=5.0, read=15.0, write=5.0, pool=2.0),
-            headers={"User-Agent": _UA},
-            follow_redirects=True,
-        )
+        logger.info("LRCLIB: fetching '%s – %s' (timestamps=%s)", artist, song, timestamps)
         if proxy:
-            client_kwargs["proxy"] = proxy
+            async with httpx.AsyncClient(
+                proxy=proxy,
+                timeout=httpx.Timeout(connect=5.0, read=15.0, write=5.0, pool=2.0),
+                headers={"User-Agent": _UA},
+                follow_redirects=True,
+            ) as client:
+                return await self._fetch_with_client(client, artist, song, timestamps)
+        return await self._fetch_with_client(get_http_client(), artist, song, timestamps)
 
-        async with httpx.AsyncClient(**client_kwargs) as client:
+    async def _get(self, client: httpx.AsyncClient, params: dict) -> dict | None:
+        """GET /api/get with one cheap retry for flaky keep-alive connections."""
+        for attempt in range(2):
             try:
-                logger.info(f"LRCLIB: fetching '{artist} – {song}' (timestamps={timestamps})")
-
-                # ── Step 1: search ───────────────────────────────────────────
-                search_resp = await client.get(
-                    _LRCLIB_SEARCH,
-                    params={"track_name": song, "artist_name": artist},
-                )
-                if search_resp.status_code != 200:
-                    logger.warning(f"LRCLIB search returned {search_resp.status_code}")
+                response = await client.get(LRCLIB_API_URL, params=params)
+                if response.status_code == 200:
+                    data = response.json()
+                    return data if isinstance(data, dict) else None
+                if response.status_code in (400, 404):
                     return None
+                logger.warning("LRCLIB get returned %s", response.status_code)
+            except httpx.TimeoutException:
+                logger.warning("LRCLIB get timed out (attempt %d)", attempt + 1)
+            except httpx.HTTPError as exc:
+                logger.warning("LRCLIB get transport error: %s", exc)
+            except ValueError:
+                return None
+        return None
 
-                results = search_resp.json()
-                if not results:
+    async def _search(self, client: httpx.AsyncClient, artist: str, song: str) -> list:
+        try:
+            response = await client.get(
+                _LRCLIB_SEARCH,
+                params={"track_name": song, "artist_name": artist},
+            )
+            if response.status_code != 200:
+                logger.warning("LRCLIB search returned %s", response.status_code)
+                return []
+            results = response.json()
+            return results if isinstance(results, list) else []
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("LRCLIB search failed: %s", exc)
+            return []
+
+    async def _fetch_with_client(
+        self,
+        client: httpx.AsyncClient,
+        artist: str,
+        song: str,
+        timestamps: bool,
+    ) -> dict | None:
+        try:
+            # ── Fast path: exact metadata lookup (one request) ───────────────
+            data = await self._get(client, {"track_name": song, "artist_name": artist})
+
+            # ── Fallback: search, score candidates, then fetch the best one ──
+            if data is None:
+                candidates = await self._search(client, artist, song)
+                if not candidates:
                     logger.info("LRCLIB: no results found")
                     return None
-
-                track = results[0]
-
-                # ── Step 2: fetch full track data ────────────────────────────
-                get_resp = await client.get(
-                    LRCLIB_API_URL,
-                    params={
-                        "track_name":  track.get("trackName"),
-                        "artist_name": track.get("artistName"),
-                        "album_name":  track.get("albumName"),
-                        "duration":    track.get("duration"),
-                    },
+                ranked = sorted(
+                    (
+                        (score_candidate(artist, song, candidate), candidate)
+                        for candidate in candidates
+                        if isinstance(candidate, dict)
+                    ),
+                    key=lambda item: item[0],
+                    reverse=True,
                 )
-                if get_resp.status_code != 200:
-                    logger.warning(f"LRCLIB get returned {get_resp.status_code}")
-                    return None
+                for score, candidate in ranked[:3]:
+                    if score < _MIN_CANDIDATE_SCORE:
+                        break
+                    data = await self._get(
+                        client,
+                        {
+                            "track_name": candidate.get("trackName") or song,
+                            "artist_name": candidate.get("artistName") or artist,
+                            "album_name": candidate.get("albumName"),
+                            "duration": candidate.get("duration"),
+                        },
+                    )
+                    if data is not None:
+                        break
 
-                data = get_resp.json()
-                lyrics = (
-                    data.get("syncedLyrics") if timestamps
-                    else data.get("plainLyrics")
-                )
-                if not lyrics:
-                    # Graceful fallback: if synced not available, try plain
-                    if timestamps:
-                        lyrics = data.get("plainLyrics")
-                    if not lyrics:
-                        logger.info("LRCLIB: no lyrics content in response")
-                        return None
-
-                result = {
-                    "source":        "lrclib",
-                    "artist":        data.get("artistName"),
-                    "title":         data.get("trackName"),
-                    "album":         data.get("albumName"),
-                    "duration":      data.get("duration"),
-                    "instrumental":  data.get("instrumental", False),
-                    "lyrics":        lyrics,
-                    "hasTimestamps": False,
-                    "timestamp":     datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
-                }
-
-                # ── Step 3: parse synced lyrics ──────────────────────────────
-                if timestamps and data.get("syncedLyrics"):
-                    timed = parse_lrc(data["syncedLyrics"], data.get("duration"))
-                    if timed:
-                        result["timed_lyrics"]  = timed
-                        result["hasTimestamps"] = True
-
-                logger.info(f"LRCLIB: success (hasTimestamps={result['hasTimestamps']})")
-                return result
-
-            except httpx.TimeoutException:
-                logger.error("LRCLIB timeout")
+            if data is None:
                 return None
-            except httpx.ConnectError as e:
-                logger.error(f"LRCLIB connection error: {e}")
+
+            duration_ms = None
+            if isinstance(data.get("duration"), (int, float)):
+                duration_ms = int(float(data["duration"]) * 1000)
+
+            synced = data.get("syncedLyrics")
+            plain = data.get("plainLyrics")
+            timed = parse_lrc(synced, duration_ms) if timestamps and synced else []
+
+            if timed:
+                # Keep the clean text alongside the timing data.
+                lyrics = plain or "\n".join(entry["text"] for entry in timed)
+            elif plain:
+                lyrics = plain
+            elif synced:
+                # Plain request or unparseable LRC: strip the timestamp tags.
+                parsed = parse_lrc(synced, duration_ms)
+                lyrics = "\n".join(entry["text"] for entry in parsed) if parsed else synced
+            else:
+                logger.info("LRCLIB: no lyrics content in response")
                 return None
-            except Exception as e:
-                logger.error(f"LRCLIB error: {e}")
-                return None
+
+            result = {
+                "source": "lrclib",
+                "artist": data.get("artistName"),
+                "title": data.get("trackName"),
+                "album": data.get("albumName"),
+                "duration": data.get("duration"),
+                "instrumental": data.get("instrumental", False),
+                "lyrics": lyrics,
+                "hasTimestamps": bool(timed),
+                "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            if timed:
+                result["timed_lyrics"] = timed
+
+            logger.info("LRCLIB: success (hasTimestamps=%s)", result["hasTimestamps"])
+            return result
+
+        except Exception as e:
+            logger.error("LRCLIB error: %s", e)
+            return None
