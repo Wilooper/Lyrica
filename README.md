@@ -38,6 +38,27 @@ Whether you are building a **karaoke player**, a **music streaming client**, an 
 
 ---
 
+> **Note from the Developer**
+>
+> **Lyrica v1.5** is the current stable release of the API. While it provides reliable access to the available features, it has certain limitations compared to the newer architecture.
+>
+> An improved version, **Lyrica v2-beta**, is now available for testing as of **November 4, 2026**.
+>
+> - **Stable Release (v1.5):** Recommended for production use.
+> - **Beta Release (v2-beta):** Introduces improvements and additional capabilities but may contain bugs or unexpected behaviour that could affect performance and reliability.
+>
+> You can explore and test the beta version in the [**v2-beta-rollout branch**](https://github.com/Wilooper/Lyrica/tree/v2-beta-rollout).
+>
+> **Note:** The v2-beta release is intended primarily for local development and testing. We do not recommend using it in production environments until it has been thoroughly tested and is officially released as stable.
+>
+> **Feedback & Contributions**
+>
+> Your feedback plays an important role in improving Lyrica. If you encounter bugs, experience unexpected behaviour, or have suggestions for new features, feel free to open an issue or share your feedback through the repository.
+>
+> Thank you for supporting Lyrica!
+>
+> — **Team Lyrica**
+
 ## 🚀 Quick Start
 
 ### 1. Run with Docker Compose (Recommended)
