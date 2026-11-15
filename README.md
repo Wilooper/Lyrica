@@ -200,6 +200,7 @@ Full, structured documentation is available in the [`docs/`](docs/) directory an
 - 🏛️ [**Architecture & Caching**](docs/architecture/caching.md) — In-memory LRU, Redis, and disk caching mechanics.
 - 🚢 [**Deployment Guide**](docs/deployment/docker.md) — Docker Compose, VPS (Nginx + SSL), Render, Hugging Face, and Vercel.
 - 🧪 [**Testing & Benchmarks**](docs/development/testing.md) — Automated test suite and concurrency benchmarks.
+- 🔌 [**MCP Server**](mcp_server/README.md) — Model Context Protocol server for the stable v1.5.0 API (Claude Desktop, Cursor, VS Code, and Streamable HTTP).
 
 ---
 
