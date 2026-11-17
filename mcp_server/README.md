@@ -167,6 +167,37 @@ Edit `claude_desktop_config.json`:
 }
 ```
 
+### OpenCode (local checkout)
+
+Use this entry in `opencode.json` or `opencode.jsonc`. Replace the path with
+the absolute path to your Lyrica checkout. The MCP command starts the API with
+Docker Compose only when its readiness endpoint is unavailable, waits for it,
+and then starts the MCP server. Stopping OpenCode/MCP does not stop the API.
+
+```jsonc
+{
+  "mcp": {
+    "servers": {
+      "lyrica": {
+        "type": "local",
+        "command": [
+          "uvx",
+          "--from",
+          "/path/to/Lyrica/mcp_server",
+          "lyrica-mcp",
+          "--ensure-api"
+        ]
+      }
+    }
+  }
+}
+```
+
+`uvx` installs the MCP package and its dependencies on demand. Docker Compose
+uses the `docker-compose.yml` beside the package checkout. This option is for
+the repository checkout; a published package will use the shorter command
+without `--from /path/to/Lyrica/mcp_server`.
+
 ### Remote Streamable HTTP
 
 Run the server with `--transport streamable-http`, then point the client at
@@ -224,6 +255,12 @@ docker run --rm -p 8000:8000 \
 
 On Linux, `host.docker.internal` may require
 `--add-host=host.docker.internal:host-gateway`, or use your machine's LAN IP.
+
+## Publishing
+
+PyPI releases are intended to be owned and published by the Lyrica maintainers.
+See [PUBLISHING.md](PUBLISHING.md) for the one-time Trusted Publisher setup
+and the short tagged-release process.
 
 ---
 

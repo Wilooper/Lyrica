@@ -6,7 +6,10 @@ import argparse
 import asyncio
 import json
 import logging
+import os
+import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Sequence
 
@@ -14,7 +17,7 @@ from dotenv import load_dotenv
 
 from . import TARGET_API_VERSION, __version__
 from .client import LyricaAPIError, LyricaClient
-from .config import TRANSPORTS, ConfigurationError, Settings
+from .config import DEFAULT_BASE_URL, TRANSPORTS, ConfigurationError, Settings
 from .server import create_server
 
 
@@ -77,6 +80,11 @@ def _parser(defaults: Settings) -> argparse.ArgumentParser:
         action="store_true",
         help="Check connectivity to the Lyrica API and exit instead of starting the MCP server.",
     )
+    parser.add_argument(
+        "--ensure-api",
+        action="store_true",
+        help="Start the repository Docker Compose API if needed, wait until ready, then start MCP.",
+    )
     return parser
 
 
@@ -89,6 +97,45 @@ async def _check(settings: Settings) -> int:
             return 1
     print(json.dumps(health, indent=2, ensure_ascii=False))
     return 0
+
+
+async def _api_ready(settings: Settings) -> bool:
+    async with LyricaClient(settings) as client:
+        try:
+            await client.get_health(ready=True)
+            return True
+        except LyricaAPIError:
+            return False
+
+
+async def _ensure_api(settings: Settings) -> bool:
+    if await _api_ready(settings):
+        return True
+
+    repo_root = Path(__file__).resolve().parents[2]
+    compose_file = repo_root / "docker-compose.yml"
+    if not compose_file.is_file():
+        print(f"error: docker compose file not found: {compose_file}", file=sys.stderr)
+        return False
+
+    try:
+        subprocess.run(
+            ["docker", "compose", "-f", str(compose_file), "up", "-d"],
+            cwd=repo_root,
+            check=True,
+            timeout=300,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"error: could not start Lyrica API with Docker Compose: {exc}", file=sys.stderr)
+        return False
+
+    deadline = time.monotonic() + 180
+    while time.monotonic() < deadline:
+        if await _api_ready(settings):
+            return True
+        await asyncio.sleep(2)
+    print(f"error: Lyrica API did not become ready at {settings.base_url}", file=sys.stderr)
+    return False
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -124,6 +171,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.check:
         return asyncio.run(_check(settings))
+
+    if args.ensure_api and settings.base_url == DEFAULT_BASE_URL and not os.getenv("LYRICA_API_URL"):
+        settings = settings.with_overrides(base_url="http://127.0.0.1:7860")
+
+    if args.ensure_api and not asyncio.run(_ensure_api(settings)):
+        return 1
 
     server = create_server(settings)
     if settings.transport == "stdio":
