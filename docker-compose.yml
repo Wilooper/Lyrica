@@ -24,7 +24,8 @@ services:
     ports:
       - "${PORT:-7860}:7860"
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       # Override env vars for production container
       LYRICA_ENV: production
